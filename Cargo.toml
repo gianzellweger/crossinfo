@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "backend",
+    # "macos",
+    # "windows",
+    "linux",
+    "cli"
+]
+

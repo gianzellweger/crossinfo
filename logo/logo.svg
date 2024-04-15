@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1000 1080" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(0.707642,-0.706571,0.706571,0.707642,-218.412,504.142)">
+        <g transform="matrix(1,0,0,1,90.5,45)">
+            <rect x="355" y="174" width="109" height="642"/>
+        </g>
+        <g transform="matrix(1,0,0,1,92,62)">
+            <path d="M474,456C474,437.787 459.213,423 441,423L375,423C356.787,423 342,437.787 342,456L342,795C342,813.213 356.787,828 375,828L441,828C459.213,828 474,813.213 474,795L474,456Z"/>
+        </g>
+        <g transform="matrix(1,0,0,1,18,-1)">
+            <rect x="342" y="143" width="180" height="91"/>
+        </g>
+        <g transform="matrix(1,0,0,1,18,-1)">
+            <path d="M522,143L622,234L522,234L522,143Z" style="stroke:black;stroke-width:1px;"/>
+        </g>
+    </g>
+    <g transform="matrix(0.706559,0.707654,-0.707654,0.706559,479.671,-146.781)">
+        <g transform="matrix(1,1.76987e-16,-5.33401e-17,1.22199,152.5,-287.785)">
+            <path d="M398,414.326C398,391.518 375.372,373 347.5,373C319.628,373 297,391.518 297,414.326L297,876.674C297,899.482 319.628,918 347.5,918C375.372,918 398,899.482 398,876.674L398,414.326Z"/>
+        </g>
+        <g transform="matrix(1,2.52253e-17,2.52253e-17,1,147.226,-192.406)">
+            <path d="M365.5,360C390.711,364.92 430.149,348.38 429.489,349.809C429.117,350.613 441.868,250.814 449,255.988C458.76,263.07 471,283.184 471,323.5C471,382.279 423.727,430 365.5,430C307.273,430 260,382.279 260,323.5C260,283.184 282.24,248.07 315,229.988C324.088,224.972 304.746,331.543 305.932,332.358C307.812,333.65 337.513,354.538 365.5,360Z"/>
+        </g>
+    </g>
+</svg>

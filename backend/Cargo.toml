@@ -1,0 +1,20 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+local-ip-address = "0.5.3"
+pnet_datalink = "0.33.0"
+reqwest = "0.11.18"
+battery = { package = "starship-battery", version = "*" }
+strum = "0.25.0"
+strum_macros = "0.25.0"
+sysinfo = "0.29.3"
+tokio = { version = "1.29.1", features = ["rt", "rt-multi-thread"] }
+uom = "0.34.0"
+wifiscanner = { git = "https://github.com/gianzellweger/wifiscanner.git", features = ["compile-anyway"] }
+btleplug = "0.11.1"
+display-info = "0.4.3"
