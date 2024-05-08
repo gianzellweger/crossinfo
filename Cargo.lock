@@ -63,7 +63,7 @@ dependencies = [
  "strum_macros",
  "sysinfo",
  "tokio",
- "uom 0.34.0",
+ "uom",
  "wifiscanner",
 ]
 
@@ -2084,7 +2084,7 @@ dependencies = [
  "mach2",
  "nix",
  "num-traits",
- "uom 0.35.0",
+ "uom",
  "winapi",
 ]
 
@@ -2441,16 +2441,6 @@ name = "unicode-width"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
-
-[[package]]
-name = "uom"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8f50eddd69f656ee545f7663ea5fefb7c789bc1a0d11124e049715f563a16a4"
-dependencies = [
- "num-traits",
- "typenum",
-]
 
 [[package]]
 name = "uom"
