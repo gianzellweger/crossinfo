@@ -17,4 +17,4 @@ tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread"] }
 uom = "0.35.0"
 wifiscanner = { git = "https://github.com/gianzellweger/wifiscanner.git", features = ["compile-anyway"] }
 btleplug = "0.11.1"
-display-info = "0.4.3"
+display-info = "0.5.1"
