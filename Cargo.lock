@@ -77,7 +77,7 @@ dependencies = [
  "pnet_datalink",
  "reqwest",
  "starship-battery",
- "strum 0.25.0",
+ "strum",
  "strum_macros",
  "sysinfo",
  "tokio",
@@ -1856,7 +1856,7 @@ dependencies = [
  "lru",
  "paste",
  "stability",
- "strum 0.26.2",
+ "strum",
  "time",
  "unicode-segmentation",
  "unicode-width",
@@ -2222,12 +2222,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "strum"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
 
 [[package]]
 name = "strum"
