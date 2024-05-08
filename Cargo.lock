@@ -78,7 +78,7 @@ dependencies = [
  "reqwest",
  "starship-battery",
  "strum 0.25.0",
- "strum_macros 0.25.3",
+ "strum_macros",
  "sysinfo",
  "tokio",
  "uom 0.34.0",
@@ -1372,7 +1372,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3262e75e648fce39813cb56ac41f3c3e3f65217ebf3844d818d1f9398cfb0dc"
 dependencies = [
- "hashbrown 0.14.1",
+ "hashbrown",
 ]
 
 [[package]]
@@ -2181,20 +2181,7 @@ version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d8cec3501a5194c432b2b7976db6b7d10ec95c253208b45f83f7136aa985e29"
 dependencies = [
- "strum_macros 0.26.2",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.25.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.38",
+ "strum_macros",
 ]
 
 [[package]]
