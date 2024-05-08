@@ -9,3 +9,15 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/backend"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/cli"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/linux"
+    schedule:
+      interval: "daily"
