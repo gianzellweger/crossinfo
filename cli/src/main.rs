@@ -1,5 +1,4 @@
 #![feature(let_chains)]
-#![feature(exclusive_range_pattern)]
 #![forbid(clippy::all)]
 use std::{
     collections::HashMap,
@@ -24,7 +23,6 @@ use ratatui::{
     widgets::{block::Title, Axis, Block, Borders, Chart, Clear, Dataset, GraphType, List, ListItem, ListState, Paragraph, Tabs, Wrap},
     Frame, Terminal,
 };
-use sysinfo::ProcessExt;
 
 type DataPoint = (f64, f64);
 type DataPoints = Vec<DataPoint>;
@@ -133,7 +131,6 @@ impl Logo {
             20..40 => Self::LOGO_20,
             40..80 => Self::LOGO_40,
             80.. => Self::LOGO_80,
-            _ => unreachable!("This makes no sense."),
         }
     }
 }
@@ -221,7 +218,16 @@ To exit the program, press 'q' or Esc.
         let _ = terminal.draw(|f| {
             let height = f.size().height as usize;
             let width = f.size().width as usize;
-            let welcome_text = welcome_parts[0].to_string() + Logo::get(height - std::cmp::min(WIDTH_NUMERATOR / width, height /* This is add so there is no underflow */)) + welcome_parts[1];
+            let welcome_text = welcome_parts[0].to_string()
+                + Logo::get(
+                    height
+                        - std::cmp::min(
+                            WIDTH_NUMERATOR / width,
+                            height, /* This
+                                    is add so there is no underflow */
+                        ),
+                )
+                + welcome_parts[1];
             f.render_widget(
                 Paragraph::new(welcome_text.split('\n').map(|line| Line::from(Span::raw(line))).collect::<Vec<Line>>())
                     .block(Block::default().borders(Borders::ALL))
@@ -249,14 +255,39 @@ To exit the program, press 'q' or Esc.
     }
     app_state.starting_time = Instant::now(); // I don't want there to be a big gap in the data if the tutorial screen is
                                               // read
+
+    // let mut accumulator = 0;
     loop {
+        // Code to test FPS
+        // TODO delete this
+        // let seconds_passed = app_state.starting_time.elapsed().as_secs();
+        // let mut fps = FPS.lock().unwrap();
+        // if let Some(current_fps) = fps.get_mut(seconds_passed as usize)
+        //     && *current_fps > 0
+        // {
+        //     *current_fps += 1;
+        // } else {
+        //     accumulator += 1;
+        //     if accumulator == 5 {
+        //         app_state.current_tab += 1;
+        //         accumulator = 0;
+        //     }
+        //     if app_state.current_tab == 8 {
+        //         std::fs::write("log2.txt", format!("{fps:#?}")).expect("wtf");
+        //         panic!();
+        //     }
+        //     fps[seconds_passed as usize] = 1;
+        // }
+
         let _ = terminal.draw(|f| ui(f, &mut app_state));
         app_state.confirm_kill = None;
         app_state.shift_pressed = false;
 
         elapsed = app_state.starting_time.elapsed();
 
-        if let Some(cpu_info) = app_state.manager.cpu_information() && let Some(memory_info) = app_state.manager.memory_information() {
+        if let Some(cpu_info) = app_state.manager.cpu_information()
+            && let Some(memory_info) = app_state.manager.memory_information()
+        {
             if app_state.cpu_dataset.is_empty() {
                 latest_update = Instant::now();
                 cpu_info.iter().for_each(|cpu_core| {
@@ -392,7 +423,9 @@ fn format_or_unknown<T: humansize::Unsigned + humansize::ToF64>(opt: Option<T>, 
     opt.map(formatter).unwrap_or("unknown".to_string())
 }
 
-fn ui<B: ratatui::backend::Backend>(f: &mut Frame<B>, app_state: &mut AppState) {
+static FPS: Mutex<[u16; 40]> = Mutex::new([0; 40]);
+
+fn ui(f: &mut Frame, app_state: &mut AppState) {
     let titles = backend::Tab::iter().map(|tab| Line::from(tab.to_string())).collect::<Vec<Line>>();
 
     let size = f.size();
@@ -603,7 +636,7 @@ fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_da
         cpu_info.sort_unstable_by(|a, b| a.manufacturer.cmp(&b.manufacturer));
         let sorted_cpu_info = cpu_info
             .iter()
-            .group_by(|cpu_core| cpu_core.manufacturer.clone())
+            .chunk_by(|cpu_core| cpu_core.manufacturer.clone())
             .into_iter()
             .map(|(_key, info)| info.cloned().collect())
             .collect::<Vec<Vec<backend::CpuInfo>>>(); // This is only ever necessary in multi CPU
@@ -685,7 +718,7 @@ fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_da
             })
             .collect()
     } else {
-        vec![(List::new(vec![]), Chart::new(vec![]))]
+        vec![(List::new::<Vec<&str>>(vec![]), Chart::new(vec![]))]
     };
     for (list, chart) in &mut res {
         *list = list
@@ -1085,140 +1118,111 @@ fn process_tab(manager: &mut backend::Manager, ordering: SortByProcess, shift_pr
 
     let mut selected_process: Option<&backend::ProcessInfo>;
 
-    let mut res = if let Some(ref mut process_info) = &mut latest_info.0 && !process_info.is_empty() {
-            let selected_label = "Kill [k]   ";
-            let name_label = "Name";
-            let cpu_label = format!("CPU usage [{}]", if shift_pressed {
-                'C'
-            } else {
-                'c'
-            });
-         let memory_label = format!("Memory usage [{}]", if shift_pressed {
-                'M'
-            } else {
-                'm'
-            });
-            let swap_label = format!("SWAP usage [{}]", if shift_pressed {
-                'S'
-            } else {
-                's'
-            });
-            let runtime_label = format!("Runtime [{}]", if shift_pressed {
-                'R'
-            } else {
-                'r'
-            });
+    let mut res = if let Some(ref mut process_info) = &mut latest_info.0
+        && !process_info.is_empty()
+    {
+        let selected_label = "Kill [k]   ";
+        let name_label = "Name";
+        let cpu_label = format!("CPU usage [{}]", if shift_pressed { 'C' } else { 'c' });
+        let memory_label = format!("Memory usage [{}]", if shift_pressed { 'M' } else { 'm' });
+        let swap_label = format!("SWAP usage [{}]", if shift_pressed { 'S' } else { 's' });
+        let runtime_label = format!("Runtime [{}]", if shift_pressed { 'R' } else { 'r' });
 
-            let selected_width = selected_label.len();
+        let selected_width = selected_label.len();
 
-            let name_width = std::cmp::max(
-                process_info
-                    .iter()
-                    .map(|process| process.name.len())
-                    .max()
-                    .unwrap(),
-                name_label.len(),
-            );
+        let name_width = std::cmp::max(process_info.iter().map(|process| process.name.len()).max().unwrap(), name_label.len());
 
-            let cpu_width = cpu_label.len();
+        let cpu_width = cpu_label.len();
 
-            let memory_width = std::cmp::max(
-                process_info
-                    .iter()
-                    .map(|process| formatter(process.memory_usage).len())
-                    .max()
-                    .unwrap(),
-                memory_label.len(),
-            );
+        let memory_width = std::cmp::max(process_info.iter().map(|process| formatter(process.memory_usage).len()).max().unwrap(), memory_label.len());
 
-            let swap_width = std::cmp::max(
-                process_info
-                    .iter()
-                    .map(|process| formatter(process.swap_usage).len())
-                    .max()
-                    .unwrap(),
-                swap_label.len(),
-            );
+        let swap_width = std::cmp::max(process_info.iter().map(|process| formatter(process.swap_usage).len()).max().unwrap(), swap_label.len());
 
-            let runtime_width = std::cmp::max(
-                process_info
-                    .iter()
-                    .map(|process| format_duration(&process.run_time).len())
-                    .max()
-                    .unwrap(),
-                runtime_label.len(),
-            );
+        let runtime_width = std::cmp::max(process_info.iter().map(|process| format_duration(&process.run_time).len()).max().unwrap(), runtime_label.len());
 
-            let sort_fn = |a: &backend::ProcessInfo, b: &backend::ProcessInfo| match ordering {
-                SortByProcess::CpuUsage(ord) => ord.sort_by()(a.cpu_usage, b.cpu_usage),
-                SortByProcess::MemoryUsage(ord) => ord.sort_by()(a.memory_usage, b.memory_usage),
-                SortByProcess::SwapUsage(ord) => ord.sort_by()(a.swap_usage, b.swap_usage),
-                SortByProcess::Runtime(ord) => ord.sort_by()(a.run_time, b.run_time),
-            };
+        let sort_fn = |a: &backend::ProcessInfo, b: &backend::ProcessInfo| match ordering {
+            SortByProcess::CpuUsage(ord) => ord.sort_by()(a.cpu_usage, b.cpu_usage),
+            SortByProcess::MemoryUsage(ord) => ord.sort_by()(a.memory_usage, b.memory_usage),
+            SortByProcess::SwapUsage(ord) => ord.sort_by()(a.swap_usage, b.swap_usage),
+            SortByProcess::Runtime(ord) => ord.sort_by()(a.run_time, b.run_time),
+        };
 
-            process_info.sort_by(sort_fn);
+        process_info.sort_by(sort_fn);
 
-            selected_process = process_info.get(current_line as usize);
+        selected_process = process_info.get(current_line as usize);
 
-            let items = process_info
-                .iter().enumerate()
-                .map(|(index, process)| {
-                    if index == current_line as usize {
-                        selected_process = Some(process);
-                    }
-                    ListItem::new(format!(
-                        "{:name_width$}  {:cpu_width$.2}%  {:memory_width$}  {:swap_width$}  {:runtime_width$}",
-                        process.name,
-                        process.cpu_usage,
-                        formatter(process.memory_usage),
-                        formatter(process.swap_usage),
-                        format_duration(&process.run_time)
-                    ))
-                })
-                .collect::<Vec<ListItem>>();
-            (List::new(items)
-                .block(Block::default().title(format!(
-                    "{:selected_width$}{:name_width$}  {:cpu_width$}   {:memory_width$}  {:swap_width$}  {:runtime_width$}",
-                    "", name_label, cpu_label, memory_label, swap_label, runtime_label
+        let items = process_info
+            .iter()
+            .enumerate()
+            .map(|(index, process)| {
+                if index == current_line as usize {
+                    selected_process = Some(process);
+                }
+                ListItem::new(format!(
+                    "{:name_width$}  {:cpu_width$.2}%  {:memory_width$}  {:swap_width$}  {:runtime_width$}",
+                    process.name,
+                    process.cpu_usage,
+                    formatter(process.memory_usage),
+                    formatter(process.swap_usage),
+                    format_duration(&process.run_time)
                 ))
-                .borders(Borders::ALL)
+            })
+            .collect::<Vec<ListItem>>();
+        (
+            List::new(items)
+                .block(
+                    Block::default()
+                        .title(format!(
+                            "{:selected_width$}{:name_width$}  {:cpu_width$}   {:memory_width$}  {:swap_width$}  {:runtime_width$}",
+                            "", name_label, cpu_label, memory_label, swap_label, runtime_label
+                        ))
+                        .borders(Borders::ALL),
                 )
-                .highlight_symbol(selected_label), if kill_current_process {
+                .highlight_symbol(selected_label),
+            if kill_current_process {
                 Some(match selected_process {
-                Some(selected_process) => ProcessPopup::KillProcess { process_name: selected_process.name.clone(), pid: selected_process.pid },
-                None => ProcessPopup::NoSelected
+                    Some(selected_process) => ProcessPopup::KillProcess {
+                        process_name: selected_process.name.clone(),
+                        pid:          selected_process.pid,
+                    },
+                    None => ProcessPopup::NoSelected,
                 })
             } else if more_information {
                 Some(match selected_process {
-                    Some(sp) => ProcessPopup::MoreInformation { contents: format!(r"Name: {}
+                    Some(sp) => ProcessPopup::MoreInformation {
+                        contents: format!(
+                            r"Name: {}
 Path: {}
 Memory Usage: {}
 SWAP Usage: {}
 CPU Usage: {}%
 Runtime: {}
 PID: {}
-Parent: {}", 
-                        sp.name,
-                        sp.path,
-                        humansize::format_size(sp.memory_usage, humansize::DECIMAL),
-                        humansize::format_size(sp.swap_usage, humansize::DECIMAL),
-                        sp.cpu_usage,
-                        format_duration(&sp.run_time),
-                        sp.pid,
-                        match sp.parent {
-                            Some(parent) => manager.get_process(parent).map(|p| p.name()).unwrap_or("unknown"),
-                            None => "No parent",
-                        })},
-                    None => ProcessPopup::NoSelected
+Parent: {}",
+                            sp.name,
+                            to_string_or_unknown(sp.path.clone()),
+                            humansize::format_size(sp.memory_usage, humansize::DECIMAL),
+                            humansize::format_size(sp.swap_usage, humansize::DECIMAL),
+                            sp.cpu_usage,
+                            format_duration(&sp.run_time),
+                            sp.pid,
+                            match sp.parent {
+                                Some(parent) => manager.get_process(parent).map(|p| p.name()).unwrap_or("unknown"),
+                                None => "No parent",
+                            }
+                        ),
+                    },
+                    None => ProcessPopup::NoSelected,
                 })
             } else {
                 None
-            })
+            },
+        )
     } else {
-        (List::new(vec![ListItem::new("No information available!")])
-        .block(Block::default().title("Processes")
-        .borders(Borders::ALL)
-        ), None)
+        (
+            List::new(vec![ListItem::new("No information available!")]).block(Block::default().title("Processes").borders(Borders::ALL)),
+            None,
+        )
     };
 
     res.0 = res
@@ -1229,60 +1233,54 @@ Parent: {}",
 }
 
 fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, shift_pressed: bool) -> List {
-    if let Some(mut component_info) = manager.component_information() && !component_info.is_empty() {
+    if let Some(mut component_info) = manager.component_information()
+        && !component_info.is_empty()
+    {
         let selected_label = ">";
         let name_label = "Name";
-        let temperature_label = format!("Temperature [{}]", if shift_pressed {
-            'T'
-        } else {
-            't'
-        });
-        let critical_label = format!("Critical Temperature [{}]", if shift_pressed {
-            'C'
-        } else {
-            'c'
-        });
+        let temperature_label = format!("Temperature [{}]", if shift_pressed { 'T' } else { 't' });
+        let critical_label = format!("Critical Temperature [{}]", if shift_pressed { 'C' } else { 'c' });
 
         let selected_width = selected_label.len();
-        let name_width = std::cmp::max(
-                component_info
-                    .iter()
-                    .map(|component| component.name.len())
-                    .max()
-                    .unwrap(),
-                name_label.len(),
-            );
-        let temperature_width = temperature_label.len(); // This is a bit of a gamble as it assumes that the label will always be longer than a temperature reading
+        let name_width = std::cmp::max(component_info.iter().map(|component| component.name.len()).max().unwrap(), name_label.len());
+        let temperature_width = temperature_label.len(); // This is a bit of a gamble as it assumes that the label will always be
+                                                         // longer than a temperature reading
         let critical_width = critical_label.len();
 
         let sort_fn = |a: &backend::ComponentInfo, b: &backend::ComponentInfo| match ordering {
             SortByComponent::Temperature(ord) => ord.sort_by()(a.temperature, b.temperature),
-            SortByComponent::Critical(ord) => ord.sort_by()(a.critical_temperature.unwrap_or(0.0), b.critical_temperature.unwrap_or(0.0))
+            SortByComponent::Critical(ord) => ord.sort_by()(a.critical_temperature.unwrap_or(0.0), b.critical_temperature.unwrap_or(0.0)),
         };
         component_info.sort_by(sort_fn);
-        let items = component_info.iter().map(|component| ListItem::new(
-            format!("{:name_width$}  {:temperature_width$.2}°C  {:critical_width$}",
-                component.name,
-                component.temperature,
-                match component.critical_temperature {
-                    Some(critical_temp) => format!("{critical_temp:.2}°C"),
-                    None => "None".to_string()
-                }))).collect::<Vec<ListItem>>();
-                List::new(items)
-                    .block(Block::default().title(format!(
-                    "{:selected_width$}{:name_width$}  {:temperature_width$}    {:critical_width$}",
-                    "",
-                    name_label,
-                    temperature_label,
-                    critical_label
+        let items = component_info
+            .iter()
+            .map(|component| {
+                ListItem::new(format!(
+                    "{:name_width$}  {:temperature_width$.2}°C  {:critical_width$}",
+                    component.name,
+                    component.temperature,
+                    match component.critical_temperature {
+                        Some(critical_temp) => format!("{critical_temp:.2}°C"),
+                        None => "None".to_string(),
+                    }
                 ))
-                    .borders(Borders::ALL)
-                )
+            })
+            .collect::<Vec<ListItem>>();
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(format!(
+                        "{:selected_width$}{:name_width$}  {:temperature_width$}    {:critical_width$}",
+                        "", name_label, temperature_label, critical_label
+                    ))
+                    .borders(Borders::ALL),
+            )
             .highlight_symbol(selected_label)
     } else {
         List::new(vec![ListItem::new("No information available!")])
     }
-    .style(Style::default().fg(Color::White).bg(Color::Black)).highlight_style(Style::default().fg(Color::Black).bg(Color::White))
+    .style(Style::default().fg(Color::White).bg(Color::Black))
+    .highlight_style(Style::default().fg(Color::Black).bg(Color::White))
 }
 
 fn main() -> Result<(), io::Error> {

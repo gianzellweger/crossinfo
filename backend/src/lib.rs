@@ -1,6 +1,7 @@
 // #![allow(unused_imports, dead_code,
 // unused_variables)]
 #![forbid(unsafe_code)]
+#![feature(let_chains)]
 
 /*
 Frontend checklist: These things should be in any crossinfo-frontend
@@ -26,8 +27,7 @@ use battery::units::{electric_potential::volt, energy::watt_hour};
 use btleplug::api::{Central as _, Manager as _, Peripheral as _};
 pub use strum::{EnumCount, IntoEnumIterator};
 pub use strum_macros::{EnumCount as EnumCountMacro, EnumIter};
-pub use sysinfo::PidExt;
-use sysinfo::{ComponentExt, CpuExt, DiskExt, NetworkExt, NetworksExt, ProcessExt, System, SystemExt, UserExt};
+use sysinfo::{Components, Disks, Networks, System, Users};
 use uom::si::{
     f32::*,
     frequency::{gigahertz, megahertz},
@@ -91,7 +91,7 @@ impl std::fmt::Display for Tab {
 // constants to indicate if there is support for
 // the crates used for the information
 // TODO: figure out cross compilation
-const SYSINFO_SUPPORT: bool = System::IS_SUPPORTED;
+const SYSINFO_SUPPORT: bool = sysinfo::IS_SUPPORTED_SYSTEM;
 static BATTERY_SUPPORT: AtomicBool = AtomicBool::new(false);
 
 #[cfg(any(windows, unix))]
@@ -216,7 +216,7 @@ pub struct NetworkInfo {
 #[derive(Debug, Clone)]
 pub struct ProcessInfo {
     pub name:         String,
-    pub path:         String,
+    pub path:         Option<String>,
     pub memory_usage: usize,
     pub swap_usage:   usize,
     pub cpu_usage:    f32,
@@ -260,6 +260,10 @@ pub struct BluetoothInfo {
 
 pub struct Manager {
     system:           Option<System>,
+    components:       Option<Components>,
+    users:            Option<Users>,
+    networks:         Option<Networks>,
+    disks:            Option<Disks>,
     battery_manager:  Option<battery::Manager>,
     btleplug_adapter: Option<btleplug::platform::Adapter>,
     tokio_runtime:    tokio::runtime::Runtime,
@@ -272,6 +276,22 @@ impl Default for Manager {
         Self {
             system: match SYSINFO_SUPPORT {
                 true => Some(System::new_all()),
+                false => None,
+            },
+            components: match SYSINFO_SUPPORT {
+                true => Some(Components::new()),
+                false => None,
+            },
+            users: match SYSINFO_SUPPORT {
+                true => Some(Users::new_with_refreshed_list()),
+                false => None,
+            },
+            networks: match SYSINFO_SUPPORT {
+                true => Some(Networks::new()),
+                false => None,
+            },
+            disks: match SYSINFO_SUPPORT {
+                true => Some(Disks::new()),
                 false => None,
             },
             battery_manager: match BATTERY_SUPPORT.load(Ordering::Relaxed) {
@@ -299,18 +319,23 @@ impl Manager {
     }
 
     pub fn system_information(&mut self) -> Option<SystemInfo> {
-        self.system.as_ref().map(|sys| SystemInfo {
-            os:             sys.name(),
-            os_version:     sys.os_version(),
-            kernel_version: sys.kernel_version(),
-            users:          sys.users().iter().map(|v| v.name().to_string()).collect(),
-            // .uptime() actually exists, but since the only way to
-            //  refresh that also refreshes the CPU information,
-            //  which
-            //  needs some interval to display properly, this is
-            //  probably the easier solution
-            uptime:         (std::time::UNIX_EPOCH + Duration::from_secs(sys.boot_time())).elapsed().unwrap(),
-        })
+        if let Some(users) = self.users.as_mut() {
+            users.refresh_list();
+            Some(SystemInfo {
+                os:             System::name(),
+                os_version:     System::os_version(),
+                kernel_version: System::kernel_version(),
+                users:          users.list().iter().map(|v| v.name().to_string()).collect(),
+                // .uptime() actually exists, but since the only way to
+                //  refresh that also refreshes the CPU information,
+                //  which
+                //  needs some interval to display properly, this is
+                //  probably the easier solution
+                uptime:         (std::time::UNIX_EPOCH + Duration::from_secs(System::boot_time())).elapsed().unwrap(),
+            })
+        } else {
+            None
+        }
     }
 
     pub fn cpu_information(&mut self) -> Option<Vec<CpuInfo>> {
@@ -348,16 +373,17 @@ impl Manager {
     }
 
     pub fn disk_information(&mut self) -> Option<Vec<DiskInfo>> {
-        if let Some(sys) = self.system.as_mut() {
-            sys.refresh_disks();
+        if let Some(disks) = self.disks.as_mut() {
+            disks.refresh_list();
             Some(
-                sys.disks()
+                disks
+                    .list()
                     .iter()
                     .map(|disk| DiskInfo {
                         total:       disk.total_space() as usize,
                         used:        (disk.total_space() - disk.available_space()) as usize,
                         name:        disk.name().to_string_lossy().to_string(),
-                        file_system: std::str::from_utf8(disk.file_system()).map(|s| s.to_string()).ok(),
+                        file_system: disk.file_system().to_str().map(|s| s.to_string()),
                         mount_point: disk.mount_point().to_string_lossy().to_string(),
                     })
                     .collect(),
@@ -404,14 +430,14 @@ impl Manager {
     // This is quite a complex function and I do not
     // see many advantages to refactoring it to if let
     pub fn network_information(&mut self) -> NetworkInfo {
-        if let Some(sys) = self.system.as_mut() {
-            sys.refresh_networks();
-            sys.refresh_networks_list();
+        if let Some(networks) = self.networks.as_mut() {
+            networks.refresh();
+            networks.refresh_list();
         }
 
-        let mut networks = match self.system.as_ref() {
-            Some(s) => s
-                .networks()
+        let mut networks = match self.networks.as_ref() {
+            Some(n) => n
+                .list()
                 .iter()
                 .map(|(name, data)| Network {
                     name: name.to_string(),
@@ -476,7 +502,7 @@ impl Manager {
                     .iter()
                     .map(|(pid, process)| ProcessInfo {
                         name:         process.name().to_string(),
-                        path:         process.exe().to_string_lossy().into_owned(),
+                        path:         process.exe().map(|p| p.to_string_lossy().into_owned()),
                         memory_usage: process.memory() as usize,
                         swap_usage:   process.virtual_memory() as usize,
                         cpu_usage:    process.cpu_usage(),
@@ -506,10 +532,12 @@ impl Manager {
     }
 
     pub fn component_information(&mut self) -> Option<Vec<ComponentInfo>> {
-        if let Some(sys) = self.system.as_mut() {
-            sys.refresh_specifics(sysinfo::RefreshKind::new().with_components().with_components_list());
+        if let Some(components) = self.components.as_mut() {
+            components.refresh();
+            components.refresh_list();
             Some(
-                sys.components()
+                components
+                    .list()
                     .iter()
                     .map(|component| ComponentInfo {
                         name:                 component.label().to_string(),
