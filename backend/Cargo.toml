@@ -18,3 +18,4 @@ uom = "0.36.0"
 wifiscanner = { git = "https://github.com/gianzellweger/wifiscanner.git", features = ["compile-anyway"] }
 btleplug = "0.11.1"
 display-info = "0.5.1"
+ipnetwork = "0.20.0"

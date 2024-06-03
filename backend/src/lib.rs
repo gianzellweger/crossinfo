@@ -1,7 +1,10 @@
-// #![allow(unused_imports, dead_code,
-// unused_variables)]
 #![forbid(unsafe_code)]
 #![feature(let_chains)]
+#![deny(clippy::pedantic)]
+#![deny(clippy::nursery)]
+#![forbid(clippy::enum_glob_use)]
+#![forbid(clippy::unwrap_used)]
+#![allow(clippy::doc_markdown)]
 
 /*
 Frontend checklist: These things should be in any crossinfo-frontend
@@ -15,8 +18,6 @@ Frontend checklist: These things should be in any crossinfo-frontend
 - Manager::network_information can be very slow; It is recommended the value is stored in a static variable (Mutex) which is then refresh on a separate thread
 */
 
-// Big TODO: Make this library infallable
-
 use std::{
     hash::Hash,
     sync::atomic::{AtomicBool, Ordering},
@@ -28,10 +29,7 @@ use btleplug::api::{Central as _, Manager as _, Peripheral as _};
 pub use strum::{EnumCount, IntoEnumIterator};
 pub use strum_macros::{EnumCount as EnumCountMacro, EnumIter};
 use sysinfo::{Components, Disks, Networks, System, Users};
-use uom::si::{
-    f32::*,
-    frequency::{gigahertz, megahertz},
-};
+use uom::si::{f64::Frequency, frequency::megahertz};
 
 #[derive(EnumIter, EnumCountMacro, Debug, Copy, Clone)]
 pub enum Tab {
@@ -102,7 +100,7 @@ fn populate_battery_support() {
             // find it funny to return a battery but they
             // don't actually have one and just return an
             // empty one
-            let battery_count = batteries.filter(|battery| battery.is_ok()).count();
+            let battery_count = batteries.flatten().count();
             BATTERY_SUPPORT.store(battery_count != 0, Ordering::SeqCst);
         }
     }
@@ -119,10 +117,10 @@ pub struct SystemInfo {
 
 #[derive(Debug, Clone)]
 pub struct CpuInfo {
-    pub usage:         f32,
-    pub model:         String,
-    pub manufacturer:  String,
-    pub frequency_ghz: f32,
+    pub usage:        f32,
+    pub model:        String,
+    pub manufacturer: String,
+    pub frequency:    Frequency,
 }
 
 impl Hash for CpuInfo {
@@ -144,16 +142,16 @@ impl Eq for CpuInfo {}
 // like frequency, DDR(N), manufacturer
 #[derive(Debug, Clone)]
 pub struct MemoryInfo {
-    pub total_memory: usize,
-    pub used_memory:  usize,
-    pub total_swap:   usize,
-    pub used_swap:    usize,
+    pub total_memory: u64,
+    pub used_memory:  u64,
+    pub total_swap:   u64,
+    pub used_swap:    u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct DiskInfo {
-    pub total:       usize,
-    pub used:        usize,
+    pub total:       u64,
+    pub used:        u64,
     pub name:        String,
     pub file_system: Option<String>,
     pub mount_point: String,
@@ -173,6 +171,7 @@ pub struct BatteryInfo {
     pub model:           Option<String>,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy)]
 pub struct NetworkFlags {
     pub raw:               u32,
@@ -193,14 +192,14 @@ pub struct Network {
     pub index:                        Option<u32>,
     pub ips:                          Option<Vec<std::net::IpAddr>>,
     pub flags:                        Option<NetworkFlags>,
-    pub received_recently:            Option<usize>,
-    pub received_total:               Option<usize>,
-    pub transmitted_recently:         Option<usize>,
-    pub transmitted_total:            Option<usize>,
-    pub packets_received_recently:    Option<usize>,
-    pub packets_received_total:       Option<usize>,
-    pub packets_transmitted_recently: Option<usize>,
-    pub packets_transmitted_total:    Option<usize>,
+    pub received_recently:            Option<u64>,
+    pub received_total:               Option<u64>,
+    pub transmitted_recently:         Option<u64>,
+    pub transmitted_total:            Option<u64>,
+    pub packets_received_recently:    Option<u64>,
+    pub packets_received_total:       Option<u64>,
+    pub packets_transmitted_recently: Option<u64>,
+    pub packets_transmitted_total:    Option<u64>,
     pub mac_address:                  Option<sysinfo::MacAddr>,
 }
 
@@ -217,8 +216,8 @@ pub struct NetworkInfo {
 pub struct ProcessInfo {
     pub name:         String,
     pub path:         Option<String>,
-    pub memory_usage: usize,
-    pub swap_usage:   usize,
+    pub memory_usage: u64,
+    pub swap_usage:   u64,
     pub cpu_usage:    f32,
     // TODO: add disk usage
     pub run_time:     Duration,
@@ -241,7 +240,7 @@ pub struct DisplaySize {
 
 #[derive(Debug, Clone)]
 pub struct DisplayInfo {
-    pub id:           usize,
+    pub id:           u32,
     pub size:         DisplaySize,
     pub scale_factor: f64,
     pub rotation:     f64,
@@ -274,34 +273,17 @@ impl Default for Manager {
         let tokio_runtime = tokio::runtime::Runtime::new().expect("Constructing a tokio Runtime failed");
         populate_battery_support();
         Self {
-            system: match SYSINFO_SUPPORT {
-                true => Some(System::new_all()),
-                false => None,
-            },
-            components: match SYSINFO_SUPPORT {
-                true => Some(Components::new()),
-                false => None,
-            },
-            users: match SYSINFO_SUPPORT {
-                true => Some(Users::new_with_refreshed_list()),
-                false => None,
-            },
-            networks: match SYSINFO_SUPPORT {
-                true => Some(Networks::new()),
-                false => None,
-            },
-            disks: match SYSINFO_SUPPORT {
-                true => Some(Disks::new()),
-                false => None,
-            },
-            battery_manager: match BATTERY_SUPPORT.load(Ordering::Relaxed) {
-                true => battery::Manager::new().ok(),
-                false => None,
-            },
+            system: if SYSINFO_SUPPORT { Some(System::new_all()) } else { None },
+            components: if SYSINFO_SUPPORT { Some(Components::new()) } else { None },
+            users: if SYSINFO_SUPPORT { Some(Users::new_with_refreshed_list()) } else { None },
+            networks: if SYSINFO_SUPPORT { Some(Networks::new()) } else { None },
+            disks: if SYSINFO_SUPPORT { Some(Disks::new()) } else { None },
+            battery_manager: if BATTERY_SUPPORT.load(Ordering::Relaxed) { battery::Manager::new().ok() } else { None },
             btleplug_adapter: tokio_runtime
                 .block_on(btleplug::platform::Manager::new())
-                .map(|manager| tokio_runtime.block_on(manager.adapters()).ok().map(|adapters| adapters.into_iter().nth(0).unwrap()))
+                .map(|manager| tokio_runtime.block_on(manager.adapters()).ok().map(|adapters| adapters.into_iter().nth(0)))
                 .ok()
+                .flatten()
                 .flatten(),
             tokio_runtime,
         }
@@ -309,8 +291,9 @@ impl Default for Manager {
 }
 
 impl Manager {
+    #[must_use]
     pub fn new() -> Self {
-        let new_self = Self { ..Default::default() };
+        let new_self = Self::default();
         new_self
             .btleplug_adapter
             .as_ref()
@@ -319,112 +302,93 @@ impl Manager {
     }
 
     pub fn system_information(&mut self) -> Option<SystemInfo> {
-        if let Some(users) = self.users.as_mut() {
+        self.users.as_mut().map(|users| {
             users.refresh_list();
-            Some(SystemInfo {
+            SystemInfo {
                 os:             System::name(),
                 os_version:     System::os_version(),
                 kernel_version: System::kernel_version(),
                 users:          users.list().iter().map(|v| v.name().to_string()).collect(),
-                // .uptime() actually exists, but since the only way to
-                //  refresh that also refreshes the CPU information,
-                //  which
-                //  needs some interval to display properly, this is
-                //  probably the easier solution
-                uptime:         (std::time::UNIX_EPOCH + Duration::from_secs(System::boot_time())).elapsed().unwrap(),
-            })
-        } else {
-            None
-        }
+                uptime:         Duration::from_secs(System::uptime()),
+            }
+        })
     }
 
     pub fn cpu_information(&mut self) -> Option<Vec<CpuInfo>> {
-        if let Some(sys) = self.system.as_mut() {
+        self.system.as_mut().map(|sys| {
             sys.refresh_cpu();
-            Some(
-                sys.cpus()
-                    .iter()
-                    .map(|cpu| CpuInfo {
-                        usage:         cpu.cpu_usage(),
-                        model:         cpu.name().to_string(),
-                        manufacturer:  cpu.brand().to_string(),
-                        frequency_ghz: Frequency::new::<megahertz>(cpu.frequency() as f32).get::<gigahertz>(), /* TODO: figure out how to
-                                                                                                                * use uom for this */
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        }
+            #[allow(clippy::cast_precision_loss)]
+            sys.cpus()
+                .iter()
+                .map(|cpu| CpuInfo {
+                    usage:        cpu.cpu_usage(),
+                    model:        cpu.name().to_string(),
+                    manufacturer: cpu.brand().to_string(),
+                    frequency:    Frequency::new::<megahertz>(cpu.frequency() as f64), /* TODO: figure out how to
+                                                                                        * use uom for this */
+                })
+                .collect()
+        })
     }
 
     pub fn memory_information(&mut self) -> Option<MemoryInfo> {
-        if let Some(sys) = self.system.as_mut() {
+        self.system.as_mut().map(|sys| {
             sys.refresh_memory();
-            Some(MemoryInfo {
-                total_memory: sys.total_memory() as usize,
-                used_memory:  sys.used_memory() as usize,
-                total_swap:   sys.total_swap() as usize,
-                used_swap:    sys.used_swap() as usize,
-            })
-        } else {
-            None
-        }
+            MemoryInfo {
+                total_memory: sys.total_memory(),
+                used_memory:  sys.used_memory(),
+                total_swap:   sys.total_swap(),
+                used_swap:    sys.used_swap(),
+            }
+        })
     }
 
     pub fn disk_information(&mut self) -> Option<Vec<DiskInfo>> {
-        if let Some(disks) = self.disks.as_mut() {
+        self.disks.as_mut().map(|disks| {
             disks.refresh_list();
-            Some(
-                disks
-                    .list()
-                    .iter()
-                    .map(|disk| DiskInfo {
-                        total:       disk.total_space() as usize,
-                        used:        (disk.total_space() - disk.available_space()) as usize,
-                        name:        disk.name().to_string_lossy().to_string(),
-                        file_system: disk.file_system().to_str().map(|s| s.to_string()),
-                        mount_point: disk.mount_point().to_string_lossy().to_string(),
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        }
+            disks
+                .list()
+                .iter()
+                .map(|disk| DiskInfo {
+                    total:       disk.total_space(),
+                    used:        (disk.total_space() - disk.available_space()),
+                    name:        disk.name().to_string_lossy().to_string(),
+                    file_system: disk.file_system().to_str().map(ToString::to_string),
+                    mount_point: disk.mount_point().to_string_lossy().to_string(),
+                })
+                .collect()
+        })
     }
 
     // TODO: potential error source: batteries may
     // need to be stored in the Manager struct and
     // refreshed every time
-    // TODO: refactor this to also use if let
-    pub fn battery_information(&mut self) -> Option<Vec<BatteryInfo>> {
-        self.battery_manager.as_ref()?;
-        let batteries_res = self.battery_manager.as_ref().unwrap().batteries();
-        match batteries_res {
-            Ok(batteries) => Some(
-                batteries
-                    .filter(|battery_res| battery_res.is_ok())
-                    .map(|battery_res| {
-                        let mut battery = battery_res.expect("This is not supposed to happen. The batteries should already be filtered at this point");
-                        let _ = self.battery_manager.as_ref().unwrap().refresh(&mut battery); // This could fail and lead to weird behavior.
-                                                                                              // Lets hope that doesn't happen
-                        BatteryInfo {
-                            charge:          f32::from(battery.state_of_charge()),
-                            capacity_wh:     battery.energy_full().get::<watt_hour>(),
-                            capacity_new_wh: battery.energy_full_design().get::<watt_hour>(),
-                            health:          100.0 * f32::from(battery.state_of_health()),
-                            voltage:         battery.voltage().get::<volt>(),
-                            state:           battery.state(),
-                            technology:      battery.technology(),
-                            cycle_count:     battery.cycle_count(),
-                            manufacturer:    battery.vendor().map(|s| s.to_string()),
-                            model:           battery.model().map(|s| s.to_string()),
-                        }
-                    })
-                    .collect(),
-            ),
-            Err(_) => None,
-        }
+    pub fn battery_information(&self) -> Option<Vec<BatteryInfo>> {
+        self.battery_manager.as_ref().and_then(|battery_manager| {
+            let batteries_res = battery_manager.batteries();
+            batteries_res.map_or(None, |batteries| {
+                Some(
+                    batteries
+                        .filter_map(|battery_res| {
+                            let mut battery = battery_res.ok()?;
+                            let _ = battery_manager.refresh(&mut battery);
+                            Some(BatteryInfo {
+                                charge:          f32::from(battery.state_of_charge()),
+                                capacity_wh:     battery.energy_full().get::<watt_hour>(),
+                                capacity_new_wh: battery.energy_full_design().get::<watt_hour>(),
+                                health:          100.0 * f32::from(battery.state_of_health()),
+                                voltage:         battery.voltage().get::<volt>(),
+                                state:           battery.state(),
+                                technology:      battery.technology(),
+                                cycle_count:     battery.cycle_count(),
+                                manufacturer:    battery.vendor().map(std::string::ToString::to_string),
+                                model:           battery.model().map(std::string::ToString::to_string),
+                            })
+                        })
+                        .collect(),
+                )
+            })
+        })
     }
 
     // This is quite a complex function and I do not
@@ -435,26 +399,24 @@ impl Manager {
             networks.refresh_list();
         }
 
-        let mut networks = match self.networks.as_ref() {
-            Some(n) => n
-                .list()
+        let mut networks = self.networks.as_ref().map_or_else(Vec::new, |n| {
+            n.list()
                 .iter()
                 .map(|(name, data)| Network {
                     name: name.to_string(),
-                    received_recently: Some(data.received() as usize),
-                    received_total: Some(data.total_received() as usize),
-                    transmitted_recently: Some(data.transmitted() as usize),
-                    transmitted_total: Some(data.total_transmitted() as usize),
-                    packets_received_recently: Some(data.packets_received() as usize),
-                    packets_received_total: Some(data.total_packets_received() as usize),
-                    packets_transmitted_recently: Some(data.packets_transmitted() as usize),
-                    packets_transmitted_total: Some(data.total_packets_transmitted() as usize),
+                    received_recently: Some(data.received()),
+                    received_total: Some(data.total_received()),
+                    transmitted_recently: Some(data.transmitted()),
+                    transmitted_total: Some(data.total_transmitted()),
+                    packets_received_recently: Some(data.packets_received()),
+                    packets_received_total: Some(data.total_packets_received()),
+                    packets_transmitted_recently: Some(data.packets_transmitted()),
+                    packets_transmitted_total: Some(data.total_packets_transmitted()),
                     mac_address: Some(data.mac_address()),
                     ..Default::default()
                 })
-                .collect::<Vec<Network>>(),
-            None => vec![],
-        };
+                .collect::<Vec<Network>>()
+        });
 
         for interface in pnet_datalink::interfaces() {
             let network_flags = NetworkFlags {
@@ -468,14 +430,14 @@ impl Manager {
             if let Some(network_index) = networks.iter().position(|network| network.name == interface.name) {
                 networks[network_index].description = Some(interface.description);
                 networks[network_index].index = Some(interface.index);
-                networks[network_index].ips = Some(interface.ips.iter().map(|ip| ip.ip()).collect());
+                networks[network_index].ips = Some(interface.ips.iter().map(ipnetwork::IpNetwork::ip).collect());
                 networks[network_index].flags = Some(network_flags);
             } else {
                 networks.push(Network {
                     name: interface.name,
                     description: Some(interface.description),
                     index: Some(interface.index),
-                    ips: Some(interface.ips.iter().map(|ip| ip.ip()).collect()),
+                    ips: Some(interface.ips.iter().map(ipnetwork::IpNetwork::ip).collect()),
                     flags: Some(network_flags),
                     ..Default::default()
                 });
@@ -495,64 +457,46 @@ impl Manager {
     }
 
     pub fn process_information(&mut self) -> Option<Vec<ProcessInfo>> {
-        if let Some(sys) = self.system.as_mut() {
+        self.system.as_mut().map(|sys| {
             sys.refresh_processes();
-            Some(
-                sys.processes()
-                    .iter()
-                    .map(|(pid, process)| ProcessInfo {
-                        name:         process.name().to_string(),
-                        path:         process.exe().map(|p| p.to_string_lossy().into_owned()),
-                        memory_usage: process.memory() as usize,
-                        swap_usage:   process.virtual_memory() as usize,
-                        cpu_usage:    process.cpu_usage(),
-                        run_time:     Duration::from_secs(process.run_time()),
-                        pid:          *pid,
-                        parent:       process.parent(),
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        }
+            sys.processes()
+                .iter()
+                .map(|(pid, process)| ProcessInfo {
+                    name:         process.name().to_string(),
+                    path:         process.exe().map(|p| p.to_string_lossy().into_owned()),
+                    memory_usage: process.memory(),
+                    swap_usage:   process.virtual_memory(),
+                    cpu_usage:    process.cpu_usage(),
+                    run_time:     Duration::from_secs(process.run_time()),
+                    pid:          *pid,
+                    parent:       process.parent(),
+                })
+                .collect()
+        })
     }
 
     pub fn kill_process(&self, pid: sysinfo::Pid) -> bool {
-        match self.system.as_ref() {
-            Some(sys) => sys.process(pid).map(|p| p.kill()).unwrap_or(false),
-            None => false,
-        }
+        self.system.as_ref().map_or(false, |sys| sys.process(pid).is_some_and(sysinfo::Process::kill))
     }
 
-    pub fn get_process(&mut self, pid: sysinfo::Pid) -> Option<&sysinfo::Process> {
-        match self.system.as_ref() {
-            Some(sys) => sys.process(pid),
-            None => None,
-        }
+    pub fn get_process(&self, pid: sysinfo::Pid) -> Option<&sysinfo::Process> {
+        self.system.as_ref().and_then(|sys| sys.process(pid))
     }
 
     pub fn component_information(&mut self) -> Option<Vec<ComponentInfo>> {
-        if let Some(components) = self.components.as_mut() {
+        self.components.as_mut().map(|components| {
             components.refresh();
             components.refresh_list();
-            Some(
-                components
-                    .list()
-                    .iter()
-                    .map(|component| ComponentInfo {
-                        name:                 component.label().to_string(),
-                        temperature:          component.temperature(),
-                        critical_temperature: component.critical(),
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        }
-    }
-
-    pub fn print_type_of<T>(_: &T) {
-        println!("{}", std::any::type_name::<T>())
+            components
+                .list()
+                .iter()
+                .map(|component| ComponentInfo {
+                    name:                 component.label().to_string(),
+                    temperature:          component.temperature(),
+                    critical_temperature: component.critical(),
+                })
+                .collect()
+        })
     }
 
     pub fn display_information(&self) -> Option<Vec<DisplayInfo>> {
@@ -560,13 +504,13 @@ impl Manager {
             monitors
                 .iter()
                 .map(|monitor| DisplayInfo {
-                    id:           monitor.id as usize,
+                    id:           monitor.id,
                     size:         DisplaySize {
                         width:  monitor.width,
                         height: monitor.height,
                     },
-                    scale_factor: monitor.scale_factor as f64,
-                    rotation:     monitor.rotation as f64,
+                    scale_factor: f64::from(monitor.scale_factor),
+                    rotation:     f64::from(monitor.rotation),
                     is_primary:   monitor.is_primary,
                 })
                 .collect()
@@ -601,5 +545,5 @@ impl Manager {
 
 #[test]
 fn test1() {
-    crate::Manager::new().display_information();
+    println!("{:#?}", crate::Manager::new().display_information());
 }

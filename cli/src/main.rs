@@ -1,5 +1,14 @@
 #![feature(let_chains)]
 #![forbid(clippy::all)]
+#![deny(clippy::pedantic)]
+#![deny(clippy::nursery)]
+#![forbid(clippy::enum_glob_use)]
+// #![forbid(clippy::unwrap_used)]
+#![allow(clippy::doc_markdown)]
+// TODO: remove this one
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::too_many_lines)]
+
 use std::{
     collections::HashMap,
     io,
@@ -125,7 +134,7 @@ impl Logo {
 }
 
 impl Logo {
-    fn get(index: usize) -> &'static str {
+    const fn get(index: usize) -> &'static str {
         match index {
             ..20 => Self::LOGO_MINI,
             20..40 => Self::LOGO_20,
@@ -178,6 +187,8 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) {
 
     // Note: This assumes that the amount of RAM and SWAP stays constant. I
     // would guess the chance of this breaking is quite low (I hope)
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::while_float)]
     if let Some(memory_info) = app_state.manager.memory_information() {
         app_state.ram_important_digits = Some(memory_info.total_memory as f64);
         while app_state.ram_important_digits.unwrap() > 1000.0 {
@@ -193,10 +204,10 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) {
     }
 
     let welcome_parts = [
-        r#"Welcome to the Crossinfo TUI, the place to get infos about your system at the command-line!
+        r"Welcome to the Crossinfo TUI, the place to get infos about your system at the command-line!
 
-"#,
-        r#"
+",
+        r"
 
 Press Enter to continue using the program if you're already familiar with it.
 
@@ -211,7 +222,7 @@ The paragraphs can be scrolled using either the up and down arrow or the scroll 
 The lists can be scrolled in the same way paragraphs can be, but they (sometimes) offer an extra element of interactivity: sorting. If you want to sort a list by a certain property, look out for the list header, where different properties are listed. If the list can be sorted after a certain property, there is a pair of square brackets containing a letter next to it. If you press this letter in its small form (without shift), the list is sorted after that property in ascending order. If you press the letter in its capital form (with shift), the list is sorted in descending order.
 
 To exit the program, press 'q' or Esc.
-"#,
+",
     ];
 
     loop {
@@ -235,7 +246,7 @@ To exit the program, press 'q' or Esc.
                     .alignment(Alignment::Center)
                     .wrap(Wrap { trim: false }),
                 f.size(),
-            )
+            );
         });
         if crossterm::event::poll(Duration::from_millis(0)).unwrap() {
             if let Ok(Event::Key(event)) = crossterm::event::read() {
@@ -290,26 +301,29 @@ To exit the program, press 'q' or Esc.
         {
             if app_state.cpu_dataset.is_empty() {
                 latest_update = Instant::now();
-                cpu_info.iter().for_each(|cpu_core| {
-                    app_state.cpu_dataset.insert(cpu_core.clone(), vec![(elapsed.as_secs_f64(), cpu_core.usage as f64)]);
-                });
+                for cpu_core in cpu_info {
+                    app_state.cpu_dataset.insert(cpu_core.clone(), vec![(elapsed.as_secs_f64(), f64::from(cpu_core.usage))]);
+                }
             } else if latest_update.elapsed() > INTERVAL {
                 latest_update = Instant::now();
-                cpu_info.iter().for_each(|cpu_core| {
+                for cpu_core in cpu_info {
                     app_state
                         .cpu_dataset
-                        .get_mut(cpu_core)
+                        .get_mut(&cpu_core)
                         .expect("The core should exist")
-                        .push((elapsed.as_secs_f64(), cpu_core.usage as f64))
-                });
+                        .push((elapsed.as_secs_f64(), f64::from(cpu_core.usage)));
+                }
+
                 app_state.ram_dataset.push((elapsed.as_secs_f64(), match memory_info.total_memory {
                     // This is highly unlikely to ever trigger as computers tend to have memory
                     0 => 0.0,
+                    #[allow(clippy::cast_precision_loss)]
                     _ => (memory_info.used_memory as f64 / memory_info.total_memory as f64) * app_state.ram_important_digits.unwrap(),
                 }));
 
                 app_state.swap_dataset.push((elapsed.as_secs_f64(), match memory_info.total_swap {
                     0 => 0.0,
+                    #[allow(clippy::cast_precision_loss)]
                     _ => (memory_info.used_swap as f64 / memory_info.total_swap as f64) * app_state.swap_important_digits.unwrap(),
                 }));
             }
@@ -380,7 +394,7 @@ To exit the program, press 'q' or Esc.
                         }
                         _ => (),
                     },
-                    KeyCode::Modifier(ModifierKeyCode::LeftShift) | KeyCode::Modifier(ModifierKeyCode::RightShift) => {
+                    KeyCode::Modifier(ModifierKeyCode::LeftShift | ModifierKeyCode::RightShift) => {
                         // This just straight up doesn't work
                         app_state.shift_pressed = true;
                     }
@@ -392,7 +406,7 @@ To exit the program, press 'q' or Esc.
                     }
                     KeyCode::Right => {
                         if app_state.current_tab < backend::Tab::COUNT - 1 {
-                            app_state.current_tab += 1
+                            app_state.current_tab += 1;
                         }
                         app_state.current_line = 0;
                     }
@@ -416,11 +430,11 @@ fn format_duration(duration: &Duration) -> String {
 
 // TODO: Convert as much as possible to this function
 fn to_string_or_unknown<T: ToString>(opt: Option<T>) -> String {
-    opt.map(|t| t.to_string()).unwrap_or("unknown".to_string())
+    opt.map_or_else(|| String::from("unknown"), |t| t.to_string())
 }
 
-fn format_or_unknown<T: humansize::Unsigned + humansize::ToF64>(opt: Option<T>, formatter: &impl Fn(T) -> String) -> String {
-    opt.map(formatter).unwrap_or("unknown".to_string())
+fn format_or_unknown<T>(opt: Option<T>, formatter: &impl Fn(T) -> String) -> String {
+    opt.map_or("unknown".to_string(), formatter)
 }
 
 static FPS: Mutex<[u16; 40]> = Mutex::new([0; 40]);
@@ -463,11 +477,12 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
 
     match app_state.current_tab {
         0 => f.render_widget(system_tab(&mut app_state.manager, app_state.current_line), chunks[1]),
+        #[allow(clippy::cast_possible_truncation)]
         1 => {
             let cpu_tab_widgets = cpu_tab(
                 &mut app_state.manager,
                 app_state.starting_time,
-                app_state.cpu_dataset.iter().map(|(cpu_core, dataset)| (cpu_core, dataset.as_slice())).collect(),
+                &app_state.cpu_dataset.iter().map(|(cpu_core, dataset)| (cpu_core, dataset.as_slice())).collect(),
             );
 
             let cpu_list_chunks = Layout::default()
@@ -497,7 +512,7 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
             chunks[1],
         ),
         3 => f.render_widget(disk_tab(&mut app_state.manager, app_state.current_line), chunks[1]),
-        4 => f.render_widget(battery_tab(&mut app_state.manager, app_state.current_line), chunks[1]),
+        4 => f.render_widget(battery_tab(&app_state.manager, app_state.current_line), chunks[1]),
         5 => {
             let network_tab_widgets = network_tab(app_state.more_information, app_state.current_line);
             f.render_widget(network_tab_widgets.0, network_chunks[0]);
@@ -512,7 +527,7 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
                         .alignment(Alignment::Left)
                         .wrap(Wrap { trim: false }),
                     popup_rect,
-                )
+                );
             }
         }
         6 => {
@@ -576,12 +591,9 @@ fn system_tab(manager: &mut backend::Manager, scroll: u16) -> Paragraph {
     if let Some(system_info) = manager.system_information() {
         let text = [
             vec![
-                Line::from(vec![Span::raw("Operating System: "), Span::raw(system_info.os.clone().unwrap_or("unknown".to_string()))]),
-                Line::from(vec![
-                    Span::raw("Operating System Version: "),
-                    Span::raw(system_info.os_version.clone().unwrap_or("unknown".to_string())),
-                ]),
-                Line::from(vec![Span::raw("Kernel Version: "), Span::raw(system_info.kernel_version.clone().unwrap_or("unknown".to_string()))]),
+                Line::from(vec![Span::raw("Operating System: "), Span::raw(to_string_or_unknown(system_info.os))]),
+                Line::from(vec![Span::raw("Operating System Version: "), Span::raw(to_string_or_unknown(system_info.os_version))]),
+                Line::from(vec![Span::raw("Kernel Version: "), Span::raw(to_string_or_unknown(system_info.kernel_version))]),
                 Line::from(vec![Span::raw("Uptime: "), Span::raw(format_duration(&system_info.uptime))]),
                 Line::from(Span::raw("Users: ")),
             ],
@@ -621,7 +633,7 @@ const COLORS: [Color; 15] = [
 
 // TODO: Make the charts a lil better in manycpu
 // setups
-fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_dataset: HashMap<&'a backend::CpuInfo, &'a [DataPoint]>) -> Vec<(List<'a>, Chart<'a>)> {
+fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_dataset: &HashMap<&'a backend::CpuInfo, &'a [DataPoint]>) -> Vec<(List<'a>, Chart<'a>)> {
     static LATEST_INFO: Mutex<(Option<Vec<backend::CpuInfo>>, Option<Instant>)> = Mutex::new((None, None));
 
     let mut latest_info = LATEST_INFO.lock().unwrap();
@@ -632,94 +644,89 @@ fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_da
 
     let elapsed = starting_time.elapsed();
 
-    let mut res = if let Some(mut cpu_info) = latest_info.0.clone() {
-        cpu_info.sort_unstable_by(|a, b| a.manufacturer.cmp(&b.manufacturer));
-        let sorted_cpu_info = cpu_info
-            .iter()
-            .chunk_by(|cpu_core| cpu_core.manufacturer.clone())
-            .into_iter()
-            .map(|(_key, info)| info.cloned().collect())
-            .collect::<Vec<Vec<backend::CpuInfo>>>(); // This is only ever necessary in multi CPU
-                                                      // setups, but I don't want a issue six years down
-                                                      // the line when multi CPU has become the norm
-
-        sorted_cpu_info
-            .iter()
-            .map(|cpu| {
-                (
-                    {
-                        let usage_label = "Usage";
-                        let model_label = "Model/Core Nr.";
-                        let manufacturer_label = "Manufacturer";
-                        let frequency_label = "Frequency (GHz)";
-
-                        let mut usage_width = usage_label.len();
-                        let mut model_width = model_label.len();
-                        let mut manufacturer_width = manufacturer_label.len();
-                        let mut frequency_width = frequency_label.len();
-
-                        for cpu_core in cpu.iter() {
-                            let usage_candidate = format!("{:.2}", cpu_core.usage).len();
-                            if usage_width < usage_candidate {
-                                usage_width = usage_candidate;
+    let mut res = latest_info.0.clone().map_or_else(
+        || vec![(List::new::<Vec<&str>>(vec![]), Chart::new(vec![]))],
+        |mut cpu_info| {
+            cpu_info.sort_unstable_by(|a, b| a.manufacturer.cmp(&b.manufacturer));
+            let sorted_cpu_info = cpu_info
+                .iter()
+                .chunk_by(|cpu_core| cpu_core.manufacturer.clone())
+                .into_iter()
+                .map(|(_key, info)| info.cloned().collect())
+                .collect::<Vec<Vec<backend::CpuInfo>>>(); // This is only ever necessary in multi CPU
+                                                          // setups, but I don't want a issue six years down
+                                                          // the line when multi CPU has become the norm
+            sorted_cpu_info
+                .iter()
+                .map(|cpu| {
+                    (
+                        {
+                            let usage_label = "Usage";
+                            let model_label = "Model/Core Nr.";
+                            let manufacturer_label = "Manufacturer";
+                            let frequency_label = "Frequency (GHz)";
+                            let mut usage_width = usage_label.len();
+                            let mut model_width = model_label.len();
+                            let mut manufacturer_width = manufacturer_label.len();
+                            let mut frequency_width = frequency_label.len();
+                            for cpu_core in cpu {
+                                let usage_candidate = format!("{:.2}", cpu_core.usage).len();
+                                if usage_width < usage_candidate {
+                                    usage_width = usage_candidate;
+                                }
+                                if model_width < cpu_core.model.len() {
+                                    model_width = cpu_core.model.len();
+                                }
+                                if manufacturer_width < cpu_core.manufacturer.len() {
+                                    manufacturer_width = cpu_core.manufacturer.len();
+                                }
+                                let frequency_candidate = format!("{:.2}", cpu_core.frequency.get::<uom::si::frequency::gigahertz>()).len();
+                                if frequency_width < frequency_candidate {
+                                    frequency_width = frequency_candidate;
+                                }
                             }
-                            if model_width < cpu_core.model.len() {
-                                model_width = cpu_core.model.len();
-                            }
-                            if manufacturer_width < cpu_core.manufacturer.len() {
-                                manufacturer_width = cpu_core.manufacturer.len();
-                            }
-                            let frequency_candidate = format!("{:.2}", cpu_core.frequency_ghz).len();
-                            if frequency_width < frequency_candidate {
-                                frequency_width = frequency_candidate;
-                            }
-                        }
-
-                        List::new(
-                            cpu.iter()
-                                .map(|cpu_core| {
-                                    ListItem::new(format!(
-                                        "{:manufacturer_width$}  {:model_width$}  {:frequency_width$.2}  {:usage_width$.2}%",
-                                        "",
-                                        cpu_core.model.clone(),
-                                        cpu_core.frequency_ghz,
-                                        cpu_core.usage
-                                    ))
-                                })
-                                .collect::<Vec<ListItem>>(),
-                        )
-                        .block(
-                            Block::default()
-                                .title(format!(
-                                    "{:manufacturer_width$}  {model_label:model_width$}  {frequency_label:frequency_width$}  {usage_label:usage_width$}",
-                                    cpu[0].manufacturer.clone()
+                            List::new(cpu.iter().map(|cpu_core| {
+                                ListItem::new(format!(
+                                    "{:manufacturer_width$}  {:model_width$}  {:frequency_width$.2}  {:usage_width$.2}%",
+                                    "",
+                                    cpu_core.model.clone(),
+                                    cpu_core.frequency.get::<uom::si::frequency::gigahertz>(),
+                                    cpu_core.usage
                                 ))
-                                .borders(Borders::ALL),
-                        )
-                    },
-                    Chart::new(
-                        cpu.iter()
-                            .enumerate()
-                            .map(|(index, cpu_core)| {
-                                Dataset::default()
-                                    .name(cpu_core.model.clone())
-                                    .marker(Marker::Braille)
-                                    .graph_type(GraphType::Line)
-                                    .style(Style::default().fg(if index < COLORS.len() {
-                                        COLORS[index]
-                                    } else {
-                                        Color::Rgb(((index * 100) % 255) as u8, ((index * 50) % 255) as u8, ((index * 75) % 255) as u8)
-                                    }))
-                                    .data(cpu_dataset[cpu_core])
-                            })
-                            .collect(),
-                    ),
-                )
-            })
-            .collect()
-    } else {
-        vec![(List::new::<Vec<&str>>(vec![]), Chart::new(vec![]))]
-    };
+                            }))
+                            .block(
+                                Block::default()
+                                    .title(format!(
+                                        "{:manufacturer_width$}  {model_label:model_width$}  {frequency_label:frequency_width$}  {usage_label:usage_width$}",
+                                        cpu[0].manufacturer.clone()
+                                    ))
+                                    .borders(Borders::ALL),
+                            )
+                        },
+                        Chart::new(
+                            cpu.iter()
+                                .enumerate()
+                                .map(|(index, cpu_core)| {
+                                    Dataset::default()
+                                        .name(cpu_core.model.clone())
+                                        .marker(Marker::Braille)
+                                        .graph_type(GraphType::Line)
+                                        .style(Style::default().fg(if index < COLORS.len() {
+                                            COLORS[index]
+                                        } else {
+                                            #[allow(clippy::cast_possible_truncation)]
+                                            Color::Rgb(((index * 100) % 255) as u8, ((index * 50) % 255) as u8, ((index * 75) % 255) as u8)
+                                        }))
+                                        .data(cpu_dataset[cpu_core])
+                                })
+                                .collect(),
+                        ),
+                    )
+                })
+                .collect()
+        },
+    );
+    drop(latest_info);
     for (list, chart) in &mut res {
         *list = list
             .clone()
@@ -746,7 +753,7 @@ fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_da
                     .title(Span::raw("CPU usage"))
                     .style(Style::default().fg(Color::White).bg(Color::Black))
                     .bounds([0.0, 100.0])
-                    .labels(["0%", "50%", "100%"].iter().cloned().map(Span::raw).collect()),
+                    .labels(["0%", "50%", "100%"].iter().copied().map(Span::raw).collect()),
             );
     }
     res
@@ -814,9 +821,8 @@ fn memory_tab<'a>(
                     .bounds([0.0, max_y_axis_bound])
                     .labels([formatter(0), formatter(max_y_axis_label / 2), formatter(max_y_axis_label)].iter().cloned().map(Span::from).collect()),
             );
-    } else {
-        return Chart::new(vec![Dataset::default()]).block(Block::default().title("No memory/SWAP information was able to be obtained!"));
     }
+    return Chart::new(vec![Dataset::default()]).block(Block::default().title("No memory/SWAP information was able to be obtained!"));
 }
 
 // MAYBE: This could be a list. I don't know if I like that better. You'd
@@ -826,61 +832,70 @@ fn memory_tab<'a>(
 // software is for
 fn disk_tab(manager: &mut backend::Manager, scroll: u16) -> Paragraph {
     let formatter = humansize::make_format(humansize::DECIMAL);
-    if let Some(disk_info) = manager.disk_information() {
-        let text = disk_info
-            .iter()
-            .flat_map(|disk| {
-                vec![
-                    Line::from(Span::styled(disk.name.clone(), Style::default().add_modifier(Modifier::BOLD))),
-                    Line::from(vec![Span::raw("Used Space: "), Span::raw(formatter(disk.used))]),
-                    Line::from(vec![Span::raw("Total Space: "), Span::raw(formatter(disk.total))]),
-                    Line::from(vec![Span::raw("Mount Point: "), Span::raw(disk.mount_point.clone())]),
-                    Line::from(vec![Span::raw("Filesystem: "), Span::raw(disk.file_system.clone().unwrap_or("unknown".to_string()))]),
-                    Line::from(Span::raw("\n")),
-                ]
-            })
-            .collect::<Vec<Line>>();
-        Paragraph::new(text).scroll((scroll, 0))
-    } else {
-        Paragraph::new("No information available!")
-    }
-    .block(Block::default().title("Disks").borders(Borders::ALL))
-    .style(Style::default().fg(Color::White).bg(Color::Black))
-    .alignment(Alignment::Left)
-    .wrap(Wrap { trim: false })
+    manager
+        .disk_information()
+        .map_or_else(
+            || Paragraph::new("No information available!"),
+            |disk_info| {
+                let text = disk_info
+                    .iter()
+                    .flat_map(|disk| {
+                        vec![
+                            Line::from(Span::styled(disk.name.clone(), Style::default().add_modifier(Modifier::BOLD))),
+                            Line::from(vec![Span::raw("Used Space: "), Span::raw(formatter(disk.used))]),
+                            Line::from(vec![Span::raw("Total Space: "), Span::raw(formatter(disk.total))]),
+                            Line::from(vec![Span::raw("Mount Point: "), Span::raw(disk.mount_point.clone())]),
+                            Line::from(vec![Span::raw("Filesystem: "), Span::raw(disk.file_system.clone().unwrap_or_else(|| "unknown".to_string()))]),
+                            Line::from(Span::raw("\n")),
+                        ]
+                    })
+                    .collect::<Vec<Line>>();
+                Paragraph::new(text).scroll((scroll, 0))
+            },
+        )
+        .block(Block::default().title("Disks").borders(Borders::ALL))
+        .style(Style::default().fg(Color::White).bg(Color::Black))
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: false })
 }
 
-fn battery_tab(manager: &mut backend::Manager, scroll: u16) -> Paragraph {
-    if let Some(battery_info) = manager.battery_information() {
-        let batteries = battery_info
-            .iter()
-            .flat_map(|battery| {
-                vec![
-                    Line::from(Span::styled(battery.model.clone().unwrap_or("unknown".to_string()), Style::default().add_modifier(Modifier::BOLD))),
-                    Line::from(vec![Span::raw("Manufacturer: "), Span::raw(battery.manufacturer.clone().unwrap_or("unknown".to_string()))]),
-                    Line::from(vec![Span::raw("Charge: "), Span::raw((battery.charge * 100.0).floor().to_string()), Span::raw("%")]),
-                    Line::from(vec![Span::raw("Status: "), Span::raw(battery.state.to_string())]),
-                    Line::from(vec![Span::raw("Capacity: "), Span::raw(format!("{:.2}", battery.capacity_wh)), Span::raw("kWh")]),
-                    Line::from(vec![Span::raw("Intended Capacity: "), Span::raw(format!("{:.2}", battery.capacity_new_wh)), Span::raw("kWh")]),
-                    Line::from(vec![Span::raw("Health: "), Span::raw(format!("{:.2}", battery.health)), Span::raw("%")]),
-                    Line::from(vec![Span::raw("Voltage: "), Span::raw(format!("{:.2}", battery.voltage)), Span::raw("V")]),
-                    Line::from(vec![Span::raw("Technology: "), Span::raw(format!("{:.2}", battery.technology))]),
-                    Line::from(vec![
-                        Span::raw("Cycle Count: "),
-                        Span::raw(battery.cycle_count.map(|cycle_count| cycle_count.to_string()).unwrap_or("unknown".to_string())),
-                    ]),
-                    Line::from(Span::raw("\n".repeat(3))),
-                ]
-            })
-            .collect::<Vec<Line>>();
-        Paragraph::new(batteries).scroll((scroll, 0))
-    } else {
-        Paragraph::new("No battery information was able to be obtained!")
-    }
-    .block(Block::default().title("Batteries").borders(Borders::ALL))
-    .style(Style::default().fg(Color::White).bg(Color::Black))
-    .alignment(Alignment::Left)
-    .wrap(Wrap { trim: false })
+fn battery_tab(manager: &backend::Manager, scroll: u16) -> Paragraph {
+    manager
+        .battery_information()
+        .map_or_else(
+            || Paragraph::new("No battery information was able to be obtained!"),
+            |battery_info| {
+                let batteries = battery_info
+                    .iter()
+                    .flat_map(|battery| {
+                        vec![
+                            Line::from(Span::styled(
+                                battery.model.clone().unwrap_or_else(|| "unknown".to_string()),
+                                Style::default().add_modifier(Modifier::BOLD),
+                            )),
+                            Line::from(vec![Span::raw("Manufacturer: "), Span::raw(battery.manufacturer.clone().unwrap_or_else(|| "unknown".to_string()))]),
+                            Line::from(vec![Span::raw("Charge: "), Span::raw((battery.charge * 100.0).floor().to_string()), Span::raw("%")]),
+                            Line::from(vec![Span::raw("Status: "), Span::raw(battery.state.to_string())]),
+                            Line::from(vec![Span::raw("Capacity: "), Span::raw(format!("{:.2}", battery.capacity_wh)), Span::raw("kWh")]),
+                            Line::from(vec![Span::raw("Intended Capacity: "), Span::raw(format!("{:.2}", battery.capacity_new_wh)), Span::raw("kWh")]),
+                            Line::from(vec![Span::raw("Health: "), Span::raw(format!("{:.2}", battery.health)), Span::raw("%")]),
+                            Line::from(vec![Span::raw("Voltage: "), Span::raw(format!("{:.2}", battery.voltage)), Span::raw("V")]),
+                            Line::from(vec![Span::raw("Technology: "), Span::raw(format!("{:.2}", battery.technology))]),
+                            Line::from(vec![
+                                Span::raw("Cycle Count: "),
+                                Span::raw(battery.cycle_count.map_or_else(|| "unknown".to_string(), |cycle_count| cycle_count.to_string())),
+                            ]),
+                            Line::from(Span::raw("\n".repeat(3))),
+                        ]
+                    })
+                    .collect::<Vec<Line>>();
+                Paragraph::new(batteries).scroll((scroll, 0))
+            },
+        )
+        .block(Block::default().title("Batteries").borders(Borders::ALL))
+        .style(Style::default().fg(Color::White).bg(Color::Black))
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: false })
 }
 
 // TODO: Make all "find max width" type statements
@@ -899,136 +914,127 @@ fn network_tab<'a>(more_info: bool, selected: u16) -> (Paragraph<'a>, List<'a>, 
             Line::from(vec![Span::raw("Connected to the internet: "), Span::raw(network_info.connected.to_string())]),
             Line::from(vec![
                 Span::raw("IP Address (IPv4): "),
-                Span::raw(network_info.ip_address_v4.map(|addr| addr.to_string()).unwrap_or("unknown".to_string())),
+                Span::raw(network_info.ip_address_v4.map_or_else(|| "unknown".to_string(), |addr| addr.to_string())),
             ]),
             Line::from(vec![
                 Span::raw("IP Address (IPv6): "),
-                Span::raw(network_info.ip_address_v6.map(|addr| addr.to_string()).unwrap_or("unknown".to_string())),
+                Span::raw(network_info.ip_address_v6.map_or_else(|| "unknown".to_string(), |addr| addr.to_string())),
             ]),
         ];
 
-        let (wifis, wifi_title) = if let Some(wifis) = network_info.wifis {
-            let wifi_name_label = "Name";
-            let wifi_mac_label = "MAC Address";
-            let wifi_channel_label = "Channel";
-            let wifi_security_label = "Security";
-            let wifi_signal_label = "Signal Level";
+        let (wifis, wifi_title) = network_info.wifis.map_or_else(
+            || (vec![ListItem::new("No WiFi information available!")], "WiFi networks".to_string()),
+            |wifis| {
+                let wifi_name_label = "Name";
+                let wifi_mac_label = "MAC Address";
+                let wifi_channel_label = "Channel";
+                let wifi_security_label = "Security";
+                let wifi_signal_label = "Signal Level";
 
-            let mut wifi_name_width = wifi_name_label.len();
-            let mut wifi_mac_width = wifi_mac_label.len();
-            let mut wifi_channel_width = wifi_channel_label.len();
-            let mut wifi_security_width = wifi_security_label.len();
-            let mut wifi_signal_width = wifi_signal_label.len();
+                let mut wifi_name_width = wifi_name_label.len();
+                let mut wifi_mac_width = wifi_mac_label.len();
+                let mut wifi_channel_width = wifi_channel_label.len();
+                let mut wifi_security_width = wifi_security_label.len();
+                let mut wifi_signal_width = wifi_signal_label.len();
 
-            for wifi in wifis.iter() {
-                if wifi_name_width < wifi.ssid.len() {
-                    wifi_name_width = wifi.ssid.len();
-                }
-                if wifi_mac_width < wifi.mac.len() {
-                    wifi_mac_width = wifi.mac.len();
-                }
-                if wifi_channel_width < wifi.channel.len() {
-                    wifi_channel_width = wifi.channel.len();
-                }
-                if wifi_security_width < wifi.security.len() {
-                    wifi_security_width = wifi.security.len();
-                }
-                if wifi_signal_width < wifi.signal_level.len() {
-                    wifi_signal_width = wifi.signal_level.len();
-                }
-            }
-
-            (
-                wifis
-                    .iter()
-                    .map(|wifi| {
-                        ListItem::new(format!(
-                            "{:wifi_name_width$}  {:wifi_mac_width$}  {:wifi_channel_width$}  {:wifi_security_width$}  {:wifi_signal_width$}",
-                            wifi.ssid.clone(),
-                            match !wifi.mac.is_empty() {
-                                true => wifi.mac.clone(),
-                                false => "unknown".to_string(),
-                            },
-                            wifi.channel.clone(),
-                            wifi.security.clone(),
-                            wifi.signal_level.clone()
-                        ))
-                    })
-                    .collect(),
-                format!(
-                    "{wifi_name_label:wifi_name_width$}  {wifi_mac_label:wifi_mac_width$}  {wifi_channel_label:wifi_channel_width$}  {wifi_security_label:wifi_security_width$}  \
-                     {wifi_signal_label:wifi_signal_width$}"
-                ),
-            )
-        } else {
-            (vec![ListItem::new("No WiFi information available!")], "WiFi networks".to_string())
-        };
-
-        let (networks, network_title) = if let Some(networks) = network_info.networks {
-            let network_name_label = "Name";
-            let network_index_label = "Index";
-            let network_mac_label = "MAC Address";
-            let network_flags_label = "Flags";
-
-            let mut network_name_width = network_name_label.len();
-            let mut network_index_width = network_index_label.len();
-            let mut network_mac_width = network_mac_label.len();
-            let mut network_flags_width = network_flags_label.len();
-
-            for network in networks.iter() {
-                if network_name_width < network.name.len() {
-                    network_name_width = network.name.len();
+                for wifi in &wifis {
+                    if wifi_name_width < wifi.ssid.len() {
+                        wifi_name_width = wifi.ssid.len();
+                    }
+                    if wifi_mac_width < wifi.mac.len() {
+                        wifi_mac_width = wifi.mac.len();
+                    }
+                    if wifi_channel_width < wifi.channel.len() {
+                        wifi_channel_width = wifi.channel.len();
+                    }
+                    if wifi_security_width < wifi.security.len() {
+                        wifi_security_width = wifi.security.len();
+                    }
+                    if wifi_signal_width < wifi.signal_level.len() {
+                        wifi_signal_width = wifi.signal_level.len();
+                    }
                 }
 
-                let index_width_candidate = network.index.map(|index| index.to_string()).unwrap_or("unknown".to_string()).len();
-                if network_index_width < index_width_candidate {
-                    network_index_width = index_width_candidate;
-                }
+                (
+                    wifis
+                        .iter()
+                        .map(|wifi| {
+                            ListItem::new(format!(
+                                "{:wifi_name_width$}  {:wifi_mac_width$}  {:wifi_channel_width$}  {:wifi_security_width$}  {:wifi_signal_width$}",
+                                wifi.ssid.clone(),
+                                if wifi.mac.is_empty() { "unknown".to_string() } else { wifi.mac.clone() },
+                                wifi.channel.clone(),
+                                wifi.security.clone(),
+                                wifi.signal_level.clone()
+                            ))
+                        })
+                        .collect(),
+                    format!(
+                        "{wifi_name_label:wifi_name_width$}  {wifi_mac_label:wifi_mac_width$}  {wifi_channel_label:wifi_channel_width$}  {wifi_security_label:wifi_security_width$}  \
+                         {wifi_signal_label:wifi_signal_width$}"
+                    ),
+                )
+            },
+        );
 
-                let mac_width_candidate = network.mac_address.map(|mac| mac.to_string()).unwrap_or("unknown".to_string()).len();
-                if network_mac_width < mac_width_candidate {
-                    network_mac_width = mac_width_candidate;
-                }
+        let (networks, network_title) = network_info.networks.map_or_else(
+            || (vec![ListItem::new("No network/interface information available!")], "Networks/Interfaces".to_string()),
+            |networks| {
+                let network_name_label = "Name";
+                let network_index_label = "Index";
+                let network_mac_label = "MAC Address";
+                let network_flags_label = "Flags";
 
-                let flags_width_candidate = match network.flags {
-                    Some(flags) => format!("{:b}", flags.raw),
-                    None => "unknown".to_string(),
+                let mut network_name_width = network_name_label.len();
+                let mut network_index_width = network_index_label.len();
+                let mut network_mac_width = network_mac_label.len();
+                let mut network_flags_width = network_flags_label.len();
+
+                for network in &networks {
+                    if network_name_width < network.name.len() {
+                        network_name_width = network.name.len();
+                    }
+
+                    let index_width_candidate = to_string_or_unknown(network.index).len();
+                    if network_index_width < index_width_candidate {
+                        network_index_width = index_width_candidate;
+                    }
+
+                    let mac_width_candidate = to_string_or_unknown(network.mac_address).len();
+                    if network_mac_width < mac_width_candidate {
+                        network_mac_width = mac_width_candidate;
+                    }
+
+                    let flags_width_candidate = format_or_unknown(network.flags, &|flags: backend::NetworkFlags| format!("{:b}", flags.raw)).len();
+                    if network_flags_width < flags_width_candidate {
+                        network_flags_width = flags_width_candidate;
+                    }
                 }
-                .len();
-                if network_flags_width < flags_width_candidate {
-                    network_flags_width = flags_width_candidate;
-                }
-            }
-            (
-                networks
-                    .iter()
-                    .enumerate()
-                    .map(|(index, network)| {
-                        if more_info && index == selected as usize {
-                            selected_network = Some(network.clone());
-                        }
-                        ListItem::new(format!(
-                            "{:network_name_width$}  {:network_index_width$}  {:network_mac_width$}  {:network_flags_width$}",
-                            network.name, /* TODO: Convert this to a more human readable format
-                                           * on MacOS (and maybe others) */
-                            network.index.map(|index| index.to_string()).unwrap_or("unknown".to_string()),
-                            network.mac_address.map(|mac| mac.to_string()).unwrap_or("unknown".to_string()),
-                            match network.flags {
-                                // TODO: present this a lil better
-                                Some(flags) => format!("{:b}", flags.raw),
-                                None => "unknown".to_string(),
+                (
+                    networks
+                        .iter()
+                        .enumerate()
+                        .map(|(index, network)| {
+                            if more_info && index == selected as usize {
+                                selected_network = Some(network.clone());
                             }
-                        ))
-                    })
-                    .collect(),
-                format!(
-                    "{} {network_name_label:network_name_width$}  {network_index_label:network_index_width$}  {network_mac_label:network_mac_width$}  {network_flags_label:network_flags_width$}",
-                    "─".repeat(popup_input_width)
-                ),
-            )
-        } else {
-            (vec![ListItem::new("No network/interface information available!")], "Networks/Interfaces".to_string())
-        };
+                            ListItem::new(format!(
+                                "{:network_name_width$}  {:network_index_width$}  {:network_mac_width$}  {:network_flags_width$}",
+                                network.name, /* TODO: Convert this to a more human readable format
+                                               * on MacOS (and maybe others) */
+                                to_string_or_unknown(network.index),
+                                to_string_or_unknown(network.mac_address),
+                                format_or_unknown(network.flags, &|flags: backend::NetworkFlags| format!("{:b}", flags.raw)),
+                            ))
+                        })
+                        .collect(),
+                    format!(
+                        "{} {network_name_label:network_name_width$}  {network_index_label:network_index_width$}  {network_mac_label:network_mac_width$}  {network_flags_label:network_flags_width$}",
+                        "─".repeat(popup_input_width)
+                    ),
+                )
+            },
+        );
 
         (
             Paragraph::new(text),
@@ -1061,9 +1067,11 @@ fn network_tab<'a>(more_info: bool, selected: u16) -> (Paragraph<'a>, List<'a>, 
         .highlight_symbol(popup_input_label);
     if more_info {
         if let Some(n) = selected_network {
-            let flags_text = match n.flags {
-                Some(flags) => format!(
-                    r"
+            let flags_text = n.flags.map_or_else(
+                || "Flags: unknown".to_string(),
+                |flags| {
+                    format!(
+                        r"
 Flags (Raw): {:b}
     Is up? {}
     Is broadcast? {}
@@ -1071,10 +1079,11 @@ Flags (Raw): {:b}
     Is point-to-point interface? {}
     Is multicast interface? {}
                 ",
-                    flags.raw, flags.is_up, flags.is_broadcast, flags.is_loopback, flags.is_point_to_point, flags.is_multicast,
-                ),
-                None => "Flags: unknown".to_string(),
-            };
+                        flags.raw, flags.is_up, flags.is_broadcast, flags.is_loopback, flags.is_point_to_point, flags.is_multicast,
+                    )
+                },
+            );
+
             res.3 = Some(format!(
                 r"Name: {}
 Description: {}
@@ -1091,15 +1100,15 @@ Packets transmitted: {}",
                 to_string_or_unknown(n.description),
                 to_string_or_unknown(n.mac_address),
                 to_string_or_unknown(n.index),
-                n.ips.map(|ips| ips.iter().map(|ip| ip.to_string()).join("\n")).unwrap_or("unknown".to_string()),
+                to_string_or_unknown(n.ips.map(|ips| ips.iter().map(ToString::to_string).join("\n"))),
                 flags_text,
                 format_or_unknown(n.received_total, &formatter),
                 format_or_unknown(n.transmitted_total, &formatter),
                 to_string_or_unknown(n.packets_received_total),
                 to_string_or_unknown(n.packets_transmitted_total),
-            ))
+            ));
         } else {
-            res.3 = Some("Select a network to display information about it!".to_string())
+            res.3 = Some("Select a network to display information about it!".to_string());
         }
     }
     res
@@ -1180,18 +1189,14 @@ fn process_tab(manager: &mut backend::Manager, ordering: SortByProcess, shift_pr
                 )
                 .highlight_symbol(selected_label),
             if kill_current_process {
-                Some(match selected_process {
-                    Some(selected_process) => ProcessPopup::KillProcess {
-                        process_name: selected_process.name.clone(),
-                        pid:          selected_process.pid,
-                    },
-                    None => ProcessPopup::NoSelected,
-                })
+                Some(selected_process.map_or(ProcessPopup::NoSelected, |selected_process| ProcessPopup::KillProcess {
+                    process_name: selected_process.name.clone(),
+                    pid:          selected_process.pid,
+                }))
             } else if more_information {
-                Some(match selected_process {
-                    Some(sp) => ProcessPopup::MoreInformation {
-                        contents: format!(
-                            r"Name: {}
+                Some(selected_process.map_or(ProcessPopup::NoSelected, |sp| ProcessPopup::MoreInformation {
+                    contents: format!(
+                        r"Name: {}
 Path: {}
 Memory Usage: {}
 SWAP Usage: {}
@@ -1199,21 +1204,16 @@ CPU Usage: {}%
 Runtime: {}
 PID: {}
 Parent: {}",
-                            sp.name,
-                            to_string_or_unknown(sp.path.clone()),
-                            humansize::format_size(sp.memory_usage, humansize::DECIMAL),
-                            humansize::format_size(sp.swap_usage, humansize::DECIMAL),
-                            sp.cpu_usage,
-                            format_duration(&sp.run_time),
-                            sp.pid,
-                            match sp.parent {
-                                Some(parent) => manager.get_process(parent).map(|p| p.name()).unwrap_or("unknown"),
-                                None => "No parent",
-                            }
-                        ),
-                    },
-                    None => ProcessPopup::NoSelected,
-                })
+                        sp.name,
+                        to_string_or_unknown(sp.path.clone()),
+                        humansize::format_size(sp.memory_usage, humansize::DECIMAL),
+                        humansize::format_size(sp.swap_usage, humansize::DECIMAL),
+                        sp.cpu_usage,
+                        format_duration(&sp.run_time),
+                        sp.pid,
+                        sp.parent.map_or_else(|| "No parent".to_string(), |parent| to_string_or_unknown(manager.get_process(parent).map(sysinfo::Process::name)))
+                    ),
+                }))
             } else {
                 None
             },
@@ -1224,6 +1224,8 @@ Parent: {}",
             None,
         )
     };
+
+    drop(latest_info);
 
     res.0 = res
         .0
@@ -1259,10 +1261,7 @@ fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, shif
                     "{:name_width$}  {:temperature_width$.2}°C  {:critical_width$}",
                     component.name,
                     component.temperature,
-                    match component.critical_temperature {
-                        Some(critical_temp) => format!("{critical_temp:.2}°C"),
-                        None => "None".to_string(),
-                    }
+                    component.critical_temperature.map_or_else(|| "None".to_string(), |critical_temp| format!("{critical_temp:.2}°C"))
                 ))
             })
             .collect::<Vec<ListItem>>();
