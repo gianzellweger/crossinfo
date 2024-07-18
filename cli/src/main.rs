@@ -267,28 +267,28 @@ To exit the program, press 'q' or Esc.
     app_state.starting_time = Instant::now(); // I don't want there to be a big gap in the data if the tutorial screen is
                                               // read
 
-    // let mut accumulator = 0;
+    let mut accumulator = 0;
     loop {
         // Code to test FPS
         // TODO delete this
-        // let seconds_passed = app_state.starting_time.elapsed().as_secs();
-        // let mut fps = FPS.lock().unwrap();
-        // if let Some(current_fps) = fps.get_mut(seconds_passed as usize)
-        //     && *current_fps > 0
-        // {
-        //     *current_fps += 1;
-        // } else {
-        //     accumulator += 1;
-        //     if accumulator == 5 {
-        //         app_state.current_tab += 1;
-        //         accumulator = 0;
-        //     }
-        //     if app_state.current_tab == 8 {
-        //         std::fs::write("log2.txt", format!("{fps:#?}")).expect("wtf");
-        //         panic!();
-        //     }
-        //     fps[seconds_passed as usize] = 1;
-        // }
+        let seconds_passed = app_state.starting_time.elapsed().as_secs();
+        let mut fps = FPS.lock().unwrap();
+        if let Some(current_fps) = fps.get_mut(seconds_passed as usize)
+            && *current_fps > 0
+        {
+            *current_fps += 1;
+        } else {
+            accumulator += 1;
+            if accumulator == 5 {
+                app_state.current_tab += 1;
+                accumulator = 0;
+            }
+            if app_state.current_tab == 8 {
+                std::fs::write("log.txt", format!("{fps:#?}")).expect("wtf");
+                panic!();
+            }
+            fps[seconds_passed as usize] = 1;
+        }
 
         let _ = terminal.draw(|f| ui(f, &mut app_state));
         app_state.confirm_kill = None;
