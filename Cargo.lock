@@ -68,7 +68,7 @@ dependencies = [
  "starship-battery",
  "strum 0.27.1",
  "strum_macros 0.27.1",
- "sysinfo 0.32.1",
+ "sysinfo",
  "tokio",
  "uom",
  "wifiscanner",
@@ -283,7 +283,7 @@ dependencies = [
  "humansize",
  "itertools 0.14.0",
  "ratatui",
- "sysinfo 0.33.1",
+ "sysinfo",
  "tokio",
  "uom",
 ]
@@ -935,9 +935,9 @@ dependencies = [
 
 [[package]]
 name = "gtk4"
-version = "0.9.5"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b697ff938136625f6acf75f01951220f47a45adcf0060ee55b4671cf734dac44"
+checksum = "af1c491051f030994fd0cde6f3c44f3f5640210308cff1298c7673c47408091d"
 dependencies = [
  "cairo-rs",
  "field-offset",
@@ -2626,20 +2626,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.98",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
-dependencies = [
- "core-foundation-sys",
- "libc",
- "memchr",
- "ntapi",
- "rayon",
- "windows 0.57.0",
 ]
 
 [[package]]
