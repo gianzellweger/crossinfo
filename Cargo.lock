@@ -68,7 +68,7 @@ dependencies = [
  "starship-battery",
  "strum 0.27.1",
  "strum_macros 0.27.1",
- "sysinfo 0.32.1",
+ "sysinfo",
  "tokio",
  "uom",
  "wifiscanner",
@@ -283,7 +283,7 @@ dependencies = [
  "humansize",
  "itertools 0.14.0",
  "ratatui",
- "sysinfo 0.33.1",
+ "sysinfo",
  "tokio",
  "uom",
 ]
@@ -826,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "glib"
-version = "0.20.7"
+version = "0.20.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f969edf089188d821a30cde713b6f9eb08b20c63fc2e584aba2892a7984a8cc0"
+checksum = "707b819af8059ee5395a2de9f2317d87a53dbad8846a2f089f0bb44703f37686"
 dependencies = [
  "bitflags 2.8.0",
  "futures-channel",
@@ -2626,20 +2626,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.98",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
-dependencies = [
- "core-foundation-sys",
- "libc",
- "memchr",
- "ntapi",
- "rayon",
- "windows 0.57.0",
 ]
 
 [[package]]
