@@ -11,6 +11,6 @@ ratatui = { version = "*", features = ["all-widgets"] }
 backend = { path = "../backend" }
 humansize = "2.1.3"
 itertools = "0.14.0"
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.44.0", features = ["full"] }
 sysinfo = "0.33.1"
 uom = "0.36.0"

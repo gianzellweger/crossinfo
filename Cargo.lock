@@ -68,7 +68,7 @@ dependencies = [
  "starship-battery",
  "strum 0.27.1",
  "strum_macros 0.27.1",
- "sysinfo 0.32.1",
+ "sysinfo",
  "tokio",
  "uom",
  "wifiscanner",
@@ -283,7 +283,7 @@ dependencies = [
  "humansize",
  "itertools 0.14.0",
  "ratatui",
- "sysinfo 0.33.1",
+ "sysinfo",
  "tokio",
  "uom",
 ]
@@ -2630,20 +2630,6 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
-dependencies = [
- "core-foundation-sys",
- "libc",
- "memchr",
- "ntapi",
- "rayon",
- "windows 0.57.0",
-]
-
-[[package]]
-name = "sysinfo"
 version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fc858248ea01b66f19d8e8a6d55f41deaf91e9d495246fd01368d99935c6c01"
@@ -2795,9 +2781,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.43.0"
+version = "1.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d61fa4ffa3de412bfea335c6ecff681de2b609ba3c77ef3e00e521813a9ed9e"
+checksum = "9975ea0f48b5aa3972bf2d888c238182458437cc2a19374b81b25cdf1023fb3a"
 dependencies = [
  "backtrace",
  "bytes",
