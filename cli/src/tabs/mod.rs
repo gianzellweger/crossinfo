@@ -1,0 +1,21 @@
+mod battery;
+mod bluetooth;
+mod component;
+mod cpu;
+mod disk;
+mod display;
+mod memory;
+mod network;
+mod process;
+mod system;
+
+pub use battery::battery_tab;
+pub use bluetooth::bluetooth_tab;
+pub use component::component_tab;
+pub use cpu::cpu_tab;
+pub use disk::disk_tab;
+pub use display::display_tab;
+pub use memory::memory_tab;
+pub use network::network_tab;
+pub use process::process_tab;
+pub use system::system_tab;

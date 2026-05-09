@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![feature(let_chains)]
 #![deny(clippy::pedantic)]
 #![deny(clippy::nursery)]
 #![forbid(clippy::enum_glob_use)]
@@ -94,15 +93,15 @@ static BATTERY_SUPPORT: AtomicBool = AtomicBool::new(false);
 
 #[cfg(any(windows, unix))]
 fn populate_battery_support() {
-    if let Ok(manager) = battery::Manager::new() {
-        if let Ok(batteries) = manager.batteries() {
-            // The filter is necessary because Mac Desktops
-            // find it funny to return a battery but they
-            // don't actually have one and just return an
-            // empty one
-            let battery_count = batteries.flatten().count();
-            BATTERY_SUPPORT.store(battery_count != 0, Ordering::SeqCst);
-        }
+    if let Ok(manager) = battery::Manager::new()
+        && let Ok(batteries) = manager.batteries()
+    {
+        // The filter is necessary because Mac Desktops
+        // find it funny to return a battery but they
+        // don't actually have one and just return an
+        // empty one
+        let battery_count = batteries.flatten().count();
+        BATTERY_SUPPORT.store(battery_count != 0, Ordering::SeqCst);
     }
 }
 
@@ -240,6 +239,7 @@ pub struct DisplaySize {
 
 #[derive(Debug, Clone)]
 pub struct DisplayInfo {
+    // TODO: maybe expand, there's some more interesting stuff in the display_info crate.
     pub id:           u32,
     pub size:         DisplaySize,
     pub scale_factor: f64,
@@ -263,6 +263,7 @@ pub struct Manager {
     users:            Option<Users>,
     networks:         Option<Networks>,
     disks:            Option<Disks>,
+    #[allow(clippy::struct_field_names)]
     battery_manager:  Option<battery::Manager>,
     btleplug_adapter: Option<btleplug::platform::Adapter>,
     tokio_runtime:    tokio::runtime::Runtime,
@@ -303,7 +304,7 @@ impl Manager {
 
     pub fn system_information(&mut self) -> Option<SystemInfo> {
         self.users.as_mut().map(|users| {
-            users.refresh_list();
+            users.refresh();
             SystemInfo {
                 os:             System::name(),
                 os_version:     System::os_version(),
@@ -316,7 +317,7 @@ impl Manager {
 
     pub fn cpu_information(&mut self) -> Option<Vec<CpuInfo>> {
         self.system.as_mut().map(|sys| {
-            sys.refresh_cpu();
+            sys.refresh_cpu_all();
             #[allow(clippy::cast_precision_loss)]
             sys.cpus()
                 .iter()
@@ -324,8 +325,7 @@ impl Manager {
                     usage:        cpu.cpu_usage(),
                     model:        cpu.name().to_string(),
                     manufacturer: cpu.brand().to_string(),
-                    frequency:    Frequency::new::<megahertz>(cpu.frequency() as f64), /* TODO: figure out how to
-                                                                                        * use uom for this */
+                    frequency:    Frequency::new::<megahertz>(cpu.frequency() as f64),
                 })
                 .collect()
         })
@@ -345,7 +345,7 @@ impl Manager {
 
     pub fn disk_information(&mut self) -> Option<Vec<DiskInfo>> {
         self.disks.as_mut().map(|disks| {
-            disks.refresh_list();
+            disks.refresh(true);
             disks
                 .list()
                 .iter()
@@ -395,15 +395,14 @@ impl Manager {
     // see many advantages to refactoring it to if let
     pub fn network_information(&mut self) -> NetworkInfo {
         if let Some(networks) = self.networks.as_mut() {
-            networks.refresh();
-            networks.refresh_list();
+            networks.refresh(true);
         }
 
         let mut networks = self.networks.as_ref().map_or_else(Vec::new, |n| {
             n.list()
                 .iter()
                 .map(|(name, data)| Network {
-                    name: name.to_string(),
+                    name: name.clone(),
                     received_recently: Some(data.received()),
                     received_total: Some(data.total_received()),
                     transmitted_recently: Some(data.transmitted()),
@@ -430,14 +429,19 @@ impl Manager {
             if let Some(network_index) = networks.iter().position(|network| network.name == interface.name) {
                 networks[network_index].description = Some(interface.description);
                 networks[network_index].index = Some(interface.index);
-                networks[network_index].ips = Some(interface.ips.iter().map(ipnetwork::IpNetwork::ip).collect());
+                #[allow(clippy::redundant_closure_for_method_calls)]
+                let ips = interface.ips.iter().map(|ip| ip.ip()).collect();
+                networks[network_index].ips = Some(ips);
                 networks[network_index].flags = Some(network_flags);
             } else {
                 networks.push(Network {
                     name: interface.name,
                     description: Some(interface.description),
                     index: Some(interface.index),
-                    ips: Some(interface.ips.iter().map(ipnetwork::IpNetwork::ip).collect()),
+                    ips: {
+                        #[allow(clippy::redundant_closure_for_method_calls)]
+                        Some(interface.ips.iter().map(|ip| ip.ip()).collect())
+                    },
                     flags: Some(network_flags),
                     ..Default::default()
                 });
@@ -458,11 +462,11 @@ impl Manager {
 
     pub fn process_information(&mut self) -> Option<Vec<ProcessInfo>> {
         self.system.as_mut().map(|sys| {
-            sys.refresh_processes();
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
             sys.processes()
                 .iter()
                 .map(|(pid, process)| ProcessInfo {
-                    name:         process.name().to_string(),
+                    name:         process.name().display().to_string(),
                     path:         process.exe().map(|p| p.to_string_lossy().into_owned()),
                     memory_usage: process.memory(),
                     swap_usage:   process.virtual_memory(),
@@ -476,7 +480,7 @@ impl Manager {
     }
 
     pub fn kill_process(&self, pid: sysinfo::Pid) -> bool {
-        self.system.as_ref().map_or(false, |sys| sys.process(pid).is_some_and(sysinfo::Process::kill))
+        self.system.as_ref().is_some_and(|sys| sys.process(pid).is_some_and(sysinfo::Process::kill))
     }
 
     pub fn get_process(&self, pid: sysinfo::Pid) -> Option<&sysinfo::Process> {
@@ -485,14 +489,13 @@ impl Manager {
 
     pub fn component_information(&mut self) -> Option<Vec<ComponentInfo>> {
         self.components.as_mut().map(|components| {
-            components.refresh();
-            components.refresh_list();
+            components.refresh(true);
             components
                 .list()
                 .iter()
                 .map(|component| ComponentInfo {
                     name:                 component.label().to_string(),
-                    temperature:          component.temperature(),
+                    temperature:          component.temperature().unwrap_or(f32::NAN),
                     critical_temperature: component.critical(),
                 })
                 .collect()
