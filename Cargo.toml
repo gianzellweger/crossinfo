@@ -8,3 +8,5 @@ members = [
     "cli"
 ]
 
+[patch.crates-io]
+display-info = { git = "https://github.com/gianzellweger/display-info.git", rev = "e2724f621ae06bf173252655ad16d6382cf29523" }

@@ -16,7 +16,7 @@ pub fn process_tab(
     kill_current_process: bool,
     more_information: bool,
     current_line: u16,
-) -> (List<'_>, Option<ProcessPopup>) {
+) -> (List<'_>, Option<ProcessPopup>, u16) {
     static LATEST_INFO: Mutex<(Option<Vec<backend::ProcessInfo>>, Option<Instant>)> = Mutex::new((None, None));
     let formatter = humansize::make_format(humansize::DECIMAL);
     let mut latest_info = LATEST_INFO.lock().expect("process info mutex poisoned");
@@ -25,7 +25,10 @@ pub fn process_tab(
         *latest_info = (manager.process_information(), Some(Instant::now()));
     }
 
-    let mut selected_process: Option<&backend::ProcessInfo>;
+    let selected_process: Option<&backend::ProcessInfo>;
+
+    #[allow(clippy::cast_possible_truncation)]
+    let item_count = latest_info.0.as_ref().map_or(0u16, |v| v.len() as u16);
 
     let mut res = if let Some(process_info) = &mut latest_info.0
         && !process_info.is_empty()
@@ -57,11 +60,7 @@ pub fn process_tab(
 
         let items = process_info
             .iter()
-            .enumerate()
-            .map(|(index, process)| {
-                if index == current_line as usize {
-                    selected_process = Some(process);
-                }
+            .map(|process| {
                 ListItem::new(format!(
                     "{:name_width$}  {:cpu_width$.2}%  {:memory_width$}  {:swap_width$}  {:runtime_width$}",
                     process.name,
@@ -129,5 +128,5 @@ Parent: {}",
         .0
         .style(Style::default().fg(Color::White).bg(Color::Black))
         .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
-    res
+    (res.0, res.1, item_count)
 }

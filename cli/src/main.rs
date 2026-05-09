@@ -107,6 +107,7 @@ pub(crate) enum ProcessPopup {
 struct AppState {
     manager:               backend::Manager,
     current_line:          u16,
+    max_scroll:            u16,
     current_tab:           usize,
     ram_important_digits:  Option<f64>,
     swap_important_digits: Option<f64>,
@@ -169,6 +170,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, fps_test: b
     let mut app_state = AppState {
         manager:               backend::Manager::new(),
         current_line:          0,
+        max_scroll:            u16::MAX,
         current_tab:           0,
         ram_important_digits:  None,
         swap_important_digits: None,
@@ -409,22 +411,23 @@ To exit the program, press 'q' or Esc.
                         app_state.shift_pressed = true;
                     }
                     KeyCode::Up => app_state.current_line = app_state.current_line.saturating_sub(1),
-                    KeyCode::Down => app_state.current_line = app_state.current_line.saturating_add(1),
+                    KeyCode::Down => app_state.current_line = app_state.current_line.saturating_add(1).min(app_state.max_scroll),
                     KeyCode::Left => {
                         app_state.current_tab = app_state.current_tab.saturating_sub(1);
                         app_state.current_line = 0;
+                        app_state.max_scroll = u16::MAX;
                     }
                     KeyCode::Right => {
                         if app_state.current_tab < backend::Tab::COUNT - 1 {
                             app_state.current_tab += 1;
                         }
                         app_state.current_line = 0;
+                        app_state.max_scroll = u16::MAX;
                     }
                     _ => (),
                 },
                 Ok(Event::Mouse(event)) => match event.kind {
-                    // TODO: Limit scrolling
-                    MouseEventKind::ScrollDown => app_state.current_line = app_state.current_line.saturating_add(1),
+                    MouseEventKind::ScrollDown => app_state.current_line = app_state.current_line.saturating_add(1).min(app_state.max_scroll),
                     MouseEventKind::ScrollUp => app_state.current_line = app_state.current_line.saturating_sub(1),
                     _ => (),
                 },
@@ -494,14 +497,22 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
     list_state.select(Some(app_state.current_line as usize));
 
     match app_state.current_tab {
-        0 => f.render_widget(system_tab(&mut app_state.manager, app_state.current_line), chunks[1]),
+        0 => {
+            let (widget, count) = system_tab(&mut app_state.manager, app_state.current_line);
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            f.render_widget(widget, chunks[1]);
+        }
         #[allow(clippy::cast_possible_truncation)]
         1 => {
-            let cpu_tab_widgets = cpu_tab(
+            let (cpu_tab_widgets, count) = cpu_tab(
                 &mut app_state.manager,
                 app_state.starting_time,
                 &app_state.cpu_dataset.iter().map(|(cpu_core, dataset)| (cpu_core, dataset.as_slice())).collect(),
             );
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            list_state.select(Some(app_state.current_line as usize));
 
             let cpu_list_chunks = Layout::default()
                 .direction(Direction::Horizontal)
@@ -529,13 +540,32 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
             ),
             chunks[1],
         ),
-        3 => f.render_widget(disk_tab(&mut app_state.manager, app_state.current_line), chunks[1]),
-        4 => f.render_widget(battery_tab(&app_state.manager, app_state.current_line), chunks[1]),
+        3 => {
+            let (widget, count) = disk_tab(&mut app_state.manager, app_state.current_line);
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            f.render_widget(widget, chunks[1]);
+        }
+        4 => {
+            let (widget, count) = battery_tab(&app_state.manager, app_state.current_line);
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            f.render_widget(widget, chunks[1]);
+        }
         5 => {
+            let networks_count = NETWORK_INFO
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().and_then(|ni| ni.networks.as_ref().map(Vec::len)))
+                .unwrap_or(0);
+            app_state.max_scroll = u16::try_from(networks_count.saturating_sub(1)).unwrap_or(u16::MAX);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            let mut network_list_state = ListState::default();
+            network_list_state.select(Some(app_state.current_line as usize));
             let network_tab_widgets = network_tab(app_state.more_information, app_state.current_line);
             f.render_widget(network_tab_widgets.0, network_chunks[0]);
-            f.render_stateful_widget(network_tab_widgets.1, network_chunks[1], &mut list_state);
-            f.render_stateful_widget(network_tab_widgets.2, network_chunks[2], &mut list_state);
+            f.render_widget(network_tab_widgets.1, network_chunks[1]);
+            f.render_stateful_widget(network_tab_widgets.2, network_chunks[2], &mut network_list_state);
             if let Some(text) = network_tab_widgets.3 {
                 f.render_widget(Clear, popup_rect);
                 f.render_widget(
@@ -549,7 +579,7 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
             }
         }
         6 => {
-            let process_tab_widgets = process_tab(
+            let (process_list, process_popup, count) = process_tab(
                 &mut app_state.manager,
                 app_state.process_ordering,
                 app_state.shift_pressed,
@@ -557,8 +587,11 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
                 app_state.more_information,
                 app_state.current_line,
             );
-            f.render_stateful_widget(process_tab_widgets.0, chunks[1], &mut list_state);
-            let popup_information: Option<(&str, String)> = match process_tab_widgets.1 {
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            list_state.select(Some(app_state.current_line as usize));
+            f.render_stateful_widget(process_list, chunks[1], &mut list_state);
+            let popup_information: Option<(&str, String)> = match process_popup {
                 Some(ProcessPopup::KillProcess { process_name, pid }) => {
                     if app_state.process_to_kill.is_none() {
                         app_state.process_to_kill = Some((process_name, pid));
@@ -598,9 +631,26 @@ fn ui(f: &mut Frame, app_state: &mut AppState) {
                 );
             }
         }
-        7 => f.render_stateful_widget(component_tab(&mut app_state.manager, app_state.component_ordering, app_state.shift_pressed), chunks[1], &mut list_state),
-        8 => f.render_widget(display_tab(&app_state.manager, app_state.current_line), chunks[1]),
-        9 => f.render_stateful_widget(bluetooth_tab(&app_state.manager), chunks[1], &mut list_state),
+        7 => {
+            let (widget, count) = component_tab(&mut app_state.manager, app_state.component_ordering, app_state.shift_pressed);
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            list_state.select(Some(app_state.current_line as usize));
+            f.render_stateful_widget(widget, chunks[1], &mut list_state);
+        }
+        8 => {
+            let (widget, count) = display_tab(&app_state.manager, app_state.current_line);
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            f.render_widget(widget, chunks[1]);
+        }
+        9 => {
+            let (widget, count) = bluetooth_tab(&app_state.manager);
+            app_state.max_scroll = count.saturating_sub(1);
+            app_state.current_line = app_state.current_line.min(app_state.max_scroll);
+            list_state.select(Some(app_state.current_line as usize));
+            f.render_stateful_widget(widget, chunks[1], &mut list_state);
+        }
         _ => unreachable!(),
     }
 }

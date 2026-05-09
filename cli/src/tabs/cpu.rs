@@ -31,7 +31,7 @@ pub const COLORS: [Color; 15] = [
 
 // TODO: Make the charts a lil better in manycpu
 // setups
-pub fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_dataset: &HashMap<&'a backend::CpuInfo, &'a [DataPoint]>) -> Vec<(List<'a>, Chart<'a>)> {
+pub fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cpu_dataset: &HashMap<&'a backend::CpuInfo, &'a [DataPoint]>) -> (Vec<(List<'a>, Chart<'a>)>, u16) {
     static LATEST_INFO: Mutex<(Option<Vec<backend::CpuInfo>>, Option<Instant>)> = Mutex::new((None, None));
 
     let mut latest_info = LATEST_INFO.lock().expect("cpu info mutex poisoned");
@@ -41,6 +41,15 @@ pub fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cp
     }
 
     let elapsed = starting_time.elapsed();
+
+    #[allow(clippy::cast_possible_truncation)]
+    let max_items = latest_info.0.as_ref().map_or(0u16, |cpu_info| {
+        let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for core in cpu_info {
+            *counts.entry(core.manufacturer.as_str()).or_insert(0) += 1;
+        }
+        counts.values().copied().max().unwrap_or(0) as u16
+    });
 
     let mut res = latest_info.0.clone().map_or_else(
         || vec![(List::new::<Vec<&str>>(vec![]), Chart::new(vec![]))],
@@ -134,5 +143,5 @@ pub fn cpu_tab<'a>(manager: &'a mut backend::Manager, starting_time: Instant, cp
                     .labels(["0%", "50%", "100%"]),
             );
     }
-    res
+    (res, max_items)
 }

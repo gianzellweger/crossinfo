@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{INTERVAL, SortByComponent, column_width};
 
-pub fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, shift_pressed: bool) -> List<'_> {
+pub fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, shift_pressed: bool) -> (List<'_>, u16) {
     static LATEST_INFO: Mutex<(Option<Vec<backend::ComponentInfo>>, Option<Instant>)> = Mutex::new((None, None));
 
     let mut latest_info = LATEST_INFO.lock().expect("component info mutex poisoned");
@@ -15,6 +15,9 @@ pub fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, 
     if latest_info.1.is_none() || latest_info.1.expect("just checked is_none").elapsed() > INTERVAL {
         *latest_info = (manager.component_information(), Some(Instant::now()));
     }
+
+    #[allow(clippy::cast_possible_truncation)]
+    let item_count = latest_info.0.as_ref().map_or(0u16, |v| v.len() as u16);
 
     let mut res = if let Some(component_info) = &mut latest_info.0
         && !component_info.is_empty()
@@ -57,7 +60,7 @@ pub fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, 
             )
             .highlight_symbol(selected_label)
     } else {
-        List::new(vec![ListItem::new("No information available!")])
+        List::new(vec![ListItem::new("No information available!")]).block(Block::default().title("Components").borders(Borders::ALL))
     };
 
     drop(latest_info);
@@ -65,5 +68,5 @@ pub fn component_tab(manager: &mut backend::Manager, ordering: SortByComponent, 
     res = res
         .style(Style::default().fg(Color::White).bg(Color::Black))
         .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
-    res
+    (res, item_count)
 }

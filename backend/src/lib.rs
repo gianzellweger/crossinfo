@@ -291,6 +291,28 @@ impl Default for Manager {
     }
 }
 
+// On Linux, human users start at UID 1000 (UID_MIN in /etc/login.defs).
+#[cfg(target_os = "linux")]
+fn is_human_user(user: &sysinfo::User) -> bool {
+    sysinfo::Uid::try_from(1000usize).is_ok_and(|min| user.id() >= &min)
+}
+
+// On macOS, system daemons sit below UID 500 and use underscore-prefixed names.
+// Regular users start at 501.
+#[cfg(target_os = "macos")]
+fn is_human_user(user: &sysinfo::User) -> bool {
+    sysinfo::Uid::try_from(500usize).is_ok_and(|min| user.id() >= &min)
+        && !user.name().starts_with('_')
+}
+
+// On Windows, sysinfo already passes FILTER_NORMAL_ACCOUNT to NetUserEnum,
+// so only real accounts are returned. No further filtering needed.
+// On other platforms, show all users.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn is_human_user(_user: &sysinfo::User) -> bool {
+    true
+}
+
 impl Manager {
     #[must_use]
     pub fn new() -> Self {
@@ -309,7 +331,16 @@ impl Manager {
                 os:             System::name(),
                 os_version:     System::os_version(),
                 kernel_version: System::kernel_version(),
-                users:          users.list().iter().map(|v| v.name().to_string()).collect(),
+                users:          {
+                    let mut v: Vec<String> = users
+                        .list()
+                        .iter()
+                        .filter(|u| is_human_user(u))
+                        .map(|u| u.name().to_string())
+                        .collect();
+                    v.sort_unstable();
+                    v
+                },
                 uptime:         Duration::from_secs(System::uptime()),
             }
         })
@@ -512,7 +543,7 @@ impl Manager {
                         width:  monitor.width,
                         height: monitor.height,
                     },
-                    scale_factor: f64::from(monitor.scale_factor),
+                    scale_factor: (f64::from(monitor.scale_factor) * 100.0).round() / 100.0,
                     rotation:     f64::from(monitor.rotation),
                     is_primary:   monitor.is_primary,
                 })

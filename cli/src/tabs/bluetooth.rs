@@ -8,13 +8,16 @@ use ratatui::{
 use crate::{INTERVAL, column_width, to_string_or_unknown, yes_no};
 
 // TODO: make a popup with more information
-pub fn bluetooth_tab(manager: &backend::Manager) -> List<'_> {
+pub fn bluetooth_tab(manager: &backend::Manager) -> (List<'_>, u16) {
     static LATEST_INFO: Mutex<(Option<Vec<backend::BluetoothInfo>>, Option<Instant>)> = Mutex::new((None, None));
     let mut latest_info = LATEST_INFO.lock().expect("bluetooth info mutex poisoned");
 
     if latest_info.1.is_none() || latest_info.1.expect("just checked is_none").elapsed() > INTERVAL {
         *latest_info = (manager.bluetooth_information(), Some(Instant::now()));
     }
+
+    #[allow(clippy::cast_possible_truncation)]
+    let item_count = latest_info.0.as_ref().map_or(0u16, |v| v.len() as u16);
 
     let mut res = if let Some(bluetooth_info) = &mut latest_info.0
         && !bluetooth_info.is_empty()
@@ -70,5 +73,5 @@ pub fn bluetooth_tab(manager: &backend::Manager) -> List<'_> {
     res = res
         .style(Style::default().fg(Color::White).bg(Color::Black))
         .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
-    res
+    (res, item_count)
 }
