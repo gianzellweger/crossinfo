@@ -12,7 +12,7 @@ reqwest = "0.13.3"
 battery = { package = "starship-battery", version = "*" }
 strum = "0.28.0"
 strum_macros = "0.28.0"
-sysinfo = "0.39.0"
+sysinfo = "0.39.3"
 tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread"] }
 uom = "0.38.0"
 wifiscanner = { git = "https://github.com/gianzellweger/wifiscanner.git", features = ["compile-anyway"] }
